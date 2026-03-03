@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseClient } from 'shared';
-import { getSessionByCode } from 'shared';
+import { createSupabaseClient, getSessionByCode } from 'shared/server';
 
 export async function GET(request: NextRequest) {
   try {

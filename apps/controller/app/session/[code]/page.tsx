@@ -2,10 +2,11 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createSupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
-import { Lyric, Session, DisplayState, StyleConfig, DEFAULT_STYLE } from 'shared';
+import { createSupabaseClient, Lyric, Session, DisplayState, StyleConfig, DEFAULT_STYLE, useLyricsPlayerShortcuts } from 'shared';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import LyricList from '@/components/LyricList';
 import ControlPanel from '@/components/ControlPanel';
+import FontManager from '@/components/FontManager';
 
 export default function SessionPage() {
   const params = useParams();
@@ -35,6 +36,12 @@ export default function SessionPage() {
   const [editingLyric, setEditingLyric] = useState<Lyric | null>(null);
   const [editText, setEditText] = useState('');
   const [editNotes, setEditNotes] = useState('');
+
+  // Lyrics search state
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchSongName, setSearchSongName] = useState('');
+  const [searchArtist, setSearchArtist] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
 
   // Fetch initial data
   useEffect(() => {
@@ -81,7 +88,7 @@ export default function SessionPage() {
       channel = supabase
         .channel(`session:${session.id}`)
         .on(
-          'broadcast',
+          'broadcast' as any,
           { event: 'display_state' },
           (payload: { payload?: DisplayState }) => {
             if (payload.payload) {
@@ -90,7 +97,7 @@ export default function SessionPage() {
           }
         )
         .on(
-          'broadcast',
+          'broadcast' as any,
           { event: 'style' },
           (payload: { payload?: StyleConfig }) => {
             if (payload.payload) {
@@ -99,7 +106,7 @@ export default function SessionPage() {
           }
         )
         .on(
-          'postgres_changes',
+          'postgres_changes' as any,
           {
             event: '*',
             schema: 'public',
@@ -298,6 +305,94 @@ export default function SessionPage() {
     });
   };
 
+  // Handle lyrics search
+  const handleSearchLyrics = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!searchSongName.trim() || !searchArtist.trim() || !session) return;
+
+    setIsSearching(true);
+
+    try {
+      const response = await fetch('/api/lyrics/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          songName: searchSongName.trim(),
+          artist: searchArtist.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Search failed');
+      }
+
+      const { lyrics: foundLyrics } = await response.json();
+
+      if (!foundLyrics || foundLyrics.length === 0) {
+        alert('未找到歌詞，請嘗試其他歌曲');
+        return;
+      }
+
+      // Import found lyrics - delete existing and insert new ones
+      const { error: deleteError } = await supabase
+        .from('lyrics')
+        .delete()
+        .eq('session_id', session.id);
+
+      if (deleteError) throw deleteError;
+
+      // Insert all found lyrics
+      const lyricsToInsert = foundLyrics.map((lyric: { text: string; notes?: string }) => ({
+        id: crypto.randomUUID(),
+        session_id: session.id,
+        text: lyric.text,
+        notes: lyric.notes || null,
+        order_index: foundLyrics.indexOf(lyric),
+      }));
+
+      const { error: insertError } = await supabase
+        .from('lyrics')
+        .insert(lyricsToInsert);
+
+      if (insertError) throw insertError;
+
+      // Close modal and reset form
+      setShowSearchModal(false);
+      setSearchSongName('');
+      setSearchArtist('');
+
+      alert(`成功匯入 ${foundLyrics.length} 行歌詞`);
+    } catch (error) {
+      console.error('Error searching lyrics:', error);
+      alert(error instanceof Error ? error.message : '搜尋歌詞失敗');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Setup keyboard shortcuts
+  useLyricsPlayerShortcuts(
+    {
+      onPrevious: handlePrevious,
+      onNext: handleNext,
+      onToggleVisibility: handleToggleVisibility,
+      onFadeIn: handleFadeIn,
+      onFadeOut: handleFadeOut,
+      onEmergencyClear: handleEmergencyClear,
+      onJumpToLyric: (index) => {
+        if (index >= 0 && index < lyrics.length) {
+          handleLyricClick(index);
+        }
+      },
+    },
+    true,
+    lyrics.length
+  );
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -323,6 +418,15 @@ export default function SessionPage() {
               <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-600' : 'bg-red-600'}`} />
               {isConnected ? '已連線' : '連線中...'}
             </div>
+            <button
+              onClick={() => setShowSearchModal(true)}
+              className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              搜尋歌詞
+            </button>
             <button
               onClick={() => router.push('/')}
               className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all"
@@ -380,6 +484,17 @@ export default function SessionPage() {
               <h2 className="text-lg font-bold text-gray-800 mb-4">樣式設定</h2>
 
               <div className="space-y-4">
+                {/* Font Manager */}
+                <FontManager
+                  selectedFont={styleConfig.fontFamily}
+                  onFontChange={(fontUrl, fontName) =>
+                    broadcastStyle({
+                      ...styleConfig,
+                      fontFamily: fontUrl,
+                    })
+                  }
+                />
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     字型大小
@@ -532,6 +647,67 @@ export default function SessionPage() {
                     setEditNotes('');
                   }}
                   className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-all"
+                >
+                  取消
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Search Lyrics Modal */}
+      {showSearchModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">搜尋歌詞</h3>
+            <p className="text-sm text-gray-500 mb-4">使用 AI 搜尋並匯入歌詞</p>
+
+            <form onSubmit={handleSearchLyrics} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  歌曲名稱
+                </label>
+                <input
+                  type="text"
+                  value={searchSongName}
+                  onChange={(e) => setSearchSongName(e.target.value)}
+                  placeholder="例如：稻香"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  歌手
+                </label>
+                <input
+                  type="text"
+                  value={searchArtist}
+                  onChange={(e) => setSearchArtist(e.target.value)}
+                  placeholder="例如：周杰倫"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={isSearching || !searchSongName.trim() || !searchArtist.trim()}
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {isSearching ? '搜尋中...' : '搜尋並匯入'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSearchModal(false);
+                    setSearchSongName('');
+                    setSearchArtist('');
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-all"
+                  disabled={isSearching}
                 >
                   取消
                 </button>

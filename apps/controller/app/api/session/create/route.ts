@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseClient, createSession, generateSessionCode } from 'shared';
+import { createSupabaseClient, createSession, generateSessionCode } from 'shared/server';
 
 export async function POST(request: NextRequest) {
   try {
