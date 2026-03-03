@@ -1,0 +1,12 @@
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+
+[storage]
+image_transformation_enabled = true
+
+[auth]
+site_url = "http://localhost:3000"
