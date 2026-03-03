@@ -1,3 +1,5 @@
+import HomePage from '@/components/HomePage';
+
 export default function Home() {
-  return <div>控制器</div>;
+  return <HomePage />;
 }
