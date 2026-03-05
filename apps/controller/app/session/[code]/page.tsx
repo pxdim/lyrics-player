@@ -237,7 +237,13 @@ export default function SessionPage() {
   };
 
   const handleSelectLyric = (index: number) => {
-    broadcastDisplayState({ currentIndex: index, isVisible: true });
+    const prevIndex = displayState.currentIndex;
+    broadcastDisplayState({
+      currentIndex: index,
+      isVisible: true,
+      isAnimating: true,
+      previousIndex: prevIndex,
+    });
   };
 
   const handleStyleChange = (updates: Partial<StyleConfig>) => {
@@ -254,15 +260,25 @@ export default function SessionPage() {
 
   const handlePrevious = () => {
     if (displayState.currentIndex !== null && displayState.currentIndex > 0) {
-      broadcastDisplayState({ currentIndex: displayState.currentIndex - 1 });
+      const prevIndex = displayState.currentIndex;
+      broadcastDisplayState({
+        currentIndex: displayState.currentIndex - 1,
+        isAnimating: true,
+        previousIndex: prevIndex,
+      });
     }
   };
 
   const handleNext = () => {
     if (displayState.currentIndex === null && lyrics.length > 0) {
-      broadcastDisplayState({ currentIndex: 0 });
+      broadcastDisplayState({ currentIndex: 0, isAnimating: true });
     } else if (displayState.currentIndex !== null && displayState.currentIndex < lyrics.length - 1) {
-      broadcastDisplayState({ currentIndex: displayState.currentIndex + 1 });
+      const prevIndex = displayState.currentIndex;
+      broadcastDisplayState({
+        currentIndex: displayState.currentIndex + 1,
+        isAnimating: true,
+        previousIndex: prevIndex,
+      });
     }
   };
 
