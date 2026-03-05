@@ -429,7 +429,7 @@ export default function SessionPage() {
         id: crypto.randomUUID(),
         session_id: session.id,
         text: line.text,
-        notes: line.notes || song.song_name,
+        notes: line.notes || song.songName,
         order_index: index,
       }));
 
