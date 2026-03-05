@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, ChevronRight, Music3 } from 'lucide-react';
 import { DESIGN_TOKENS } from 'shared';
-import type { PlaylistSong } from 'shared';
+import type { SongGroup } from 'shared';
 
 interface PlaylistSidebarProps {
   sessionId: string;
@@ -13,15 +13,6 @@ interface PlaylistSidebarProps {
   onNextSong: () => void;
   onPreviousSong: () => void;
   onAddSong?: () => void;
-}
-
-interface SongGroup {
-  id: string;
-  songName: string;
-  artist?: string | null;
-  lyrics: Array<{ text: string; notes?: string }>;
-  orderIndex: number;
-  isCurrent: boolean;
 }
 
 export function PlaylistSidebar({

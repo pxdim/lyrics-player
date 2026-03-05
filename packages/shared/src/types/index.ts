@@ -338,6 +338,16 @@ export interface PlaylistSong {
   created_at: string;
 }
 
+// 歌單歌曲組（用於 PlaylistSidebar）
+export interface SongGroup {
+  id: string;
+  songName: string;
+  artist?: string | null;
+  lyrics: LyricLine[];
+  orderIndex: number;
+  isCurrent: boolean;
+}
+
 // 歌單狀態 (用於本地狀態管理)
 export interface PlaylistState {
   songs: PlaylistSong[];
