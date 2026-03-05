@@ -14,6 +14,7 @@ import {
   CustomTheme
 } from 'shared';
 import { Edit3, Minus, Plus, Save, Trash2 } from 'lucide-react';
+import { AnimationSettings } from './AnimationSettings';
 
 interface StylePanelProps {
   style: StyleConfig;
@@ -346,6 +347,28 @@ export default function StylePanel({
               <Plus size={16} color={DESIGN_TOKENS.colors.text.secondary} />
             </button>
           </div>
+        </section>
+
+        {/* Divider */}
+        <div style={{ height: '1px', backgroundColor: DESIGN_TOKENS.colors.panelBorder }} />
+
+        {/* Animation Settings */}
+        <section>
+          <p
+            style={{
+              fontSize: DESIGN_TOKENS.fontSize.xs,
+              color: DESIGN_TOKENS.colors.text.tertiary,
+              fontWeight: DESIGN_TOKENS.fontWeight.medium,
+              letterSpacing: '1px',
+              marginBottom: DESIGN_TOKENS.spacing.md,
+            }}
+          >
+            ANIMATION
+          </p>
+          <AnimationSettings
+            config={style.animation}
+            onChange={(updates) => onStyleChange({ animation: { ...style.animation, ...updates } })}
+          />
         </section>
       </div>
 
