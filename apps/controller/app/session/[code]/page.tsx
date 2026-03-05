@@ -43,7 +43,8 @@ export default function SessionPage() {
   const [showAISearch, setShowAISearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<{ songName: string; artist: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<{ songName: string; artist: string; confidence?: number }[]>([]);
+  const [searchWarning, setSearchWarning] = useState<string | undefined>(undefined);
 
   // Room switch states
   const [showRoomSwitcher, setShowRoomSwitcher] = useState(false);
@@ -531,6 +532,7 @@ export default function SessionPage() {
 
     setIsSearching(true);
     setSearchResults([]);
+    setSearchWarning(undefined);
 
     try {
       const response = await fetch('/api/lyrics/search', {
@@ -546,8 +548,9 @@ export default function SessionPage() {
         throw new Error('Search failed');
       }
 
-      const { options } = await response.json();
-      setSearchResults(options || []);
+      const data = await response.json();
+      setSearchResults(data.options || []);
+      setSearchWarning(data.warning);
     } catch (error) {
       console.error('Error searching:', error);
       alert('搜尋失敗，請再試一次');
@@ -556,28 +559,46 @@ export default function SessionPage() {
     }
   };
 
-  const handleImportLyrics = async (songName: string, artist: string) => {
+  const handleImportLyrics = async (
+    songName: string,
+    artist: string,
+    providedLyrics?: { text: string; notes?: string }[]
+  ) => {
     if (!session) return;
 
     setIsSearching(true);
 
     try {
-      const response = await fetch('/api/lyrics/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'lyrics',
-          songName,
-          artist,
-        }),
-      });
+      let foundLyrics: { text: string; notes?: string }[] = providedLyrics || [];
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch lyrics');
+      // Only fetch if lyrics not provided
+      if (!foundLyrics || foundLyrics.length === 0) {
+        const response = await fetch('/api/lyrics/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'lyrics',
+            songName,
+            artist,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch lyrics');
+        }
+
+        const data = await response.json();
+
+        // Check for unsure response
+        if (data.error === 'unsure') {
+          alert(data.message || '無法確認此歌曲，請提供更多資訊或手動輸入歌詞');
+          setIsSearching(false);
+          return;
+        }
+
+        foundLyrics = data.lyrics || [];
       }
-
-      const { lyrics: foundLyrics } = await response.json();
 
       if (!foundLyrics || foundLyrics.length === 0) {
         alert('未找到歌詞，請嘗試其他歌曲');
@@ -827,15 +848,29 @@ export default function SessionPage() {
           setShowAISearch(false);
           setSearchQuery('');
           setSearchResults([]);
+          setSearchWarning(undefined);
         }}
-        onAddSong={(song) => {
-          handleImportLyrics(song.songName, song.artist);
+        onAddSong={(song, lyrics) => {
+          handleImportLyrics(song.songName, song.artist, lyrics);
         }}
         searchQuery={searchQuery}
         searchResults={searchResults}
         isSearching={isSearching}
         onSearchChange={setSearchQuery}
         onSearch={handleSearchOptions}
+        onFetchLyrics={async (songName, artist) => {
+          const response = await fetch('/api/lyrics/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'lyrics', songName, artist }),
+          });
+          const data = await response.json();
+          if (data.error === 'unsure') {
+            throw new Error(data.message);
+          }
+          return data.lyrics || [];
+        }}
+        warning={searchWarning}
       />
 
       {/* Room Switcher Modal */}

@@ -17,6 +17,7 @@ interface SearchRequest {
 interface SongOption {
   songName: string;
   artist: string;
+  confidence?: number; // 0-1, confidence level
 }
 
 interface LyricLine {
@@ -26,7 +27,7 @@ interface LyricLine {
 
 interface SearchRequest {
   query: string;
-  mode?: 'search' | 'lyrics';
+  mode?: 'search' | 'lyrics' | 'preview';
   songName?: string;
   artist?: string;
 }
@@ -67,21 +68,26 @@ export async function POST(request: NextRequest) {
     const genAI = getGenAI();
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    // Mode 1: Search for song options
+    // Mode 1: Search for song options (improved prompt)
     if (mode === 'search' || !sanitizedSongName || !sanitizedArtist) {
-      const searchPrompt = `User is looking for a song with this query: "${sanitizedQuery}"
+      const searchPrompt = `You are a music database assistant. User is searching for: "${sanitizedQuery}"
 
-This could be:
-- A song name (e.g., "小情歌")
-- An artist name (e.g., "周杰倫")
-- Both (e.g., "小情歌 蘇打綠")
+IMPORTANT RULES:
+1. ONLY return songs that are REAL, well-known, and verifiable
+2. If you're unsure about a song's existence, DO NOT include it
+3. Prioritize exact matches for song name or artist
+4. Include popular Taiwanese/Chinese songs first if the query is in Chinese
+5. Assign a confidence score (0.5-1.0):
+   - 1.0: Exact match, very famous song
+   - 0.8: High confidence, well-known song
+   - 0.6: Moderate confidence, less certain
+   - 0.5: Low confidence, best guess
 
-Return a JSON array of 5-10 matching songs with BOTH song name and artist.
-Only include well-known, real songs. Don't make up songs.
+Return JSON array with format:
+[{"songName": "歌名", "artist": "歌手", "confidence": 0.9}, ...]
 
-Format: [{"songName": "歌名", "artist": "歌手"}, ...]
-
-Return ONLY the JSON array, no other text. Use Traditional Chinese for song names.`;
+Limit to 5-8 results. Return ONLY the JSON array, no other text.
+Use Traditional Chinese for Chinese song names.`;
 
       const result = await model.generateContent(searchPrompt);
       const response = await result.response;
@@ -103,27 +109,50 @@ Return ONLY the JSON array, no other text. Use Traditional Chinese for song name
       }
 
       if (!Array.isArray(options) || options.length === 0) {
-        // Return a generic fallback option
+        // Return a generic fallback option with low confidence
         return NextResponse.json({
           options: [
-            { songName: sanitizedQuery, artist: '未知歌手' },
-            { songName: sanitizedQuery, artist: '請確認歌名' }
-          ]
+            { songName: sanitizedQuery, artist: '請確認歌名', confidence: 0.3 }
+          ],
+          warning: '無法找到精確匹配，請確認歌詞正確性'
         });
       }
 
-      return NextResponse.json({ options });
+      // Sort by confidence and add warning for low confidence results
+      const sortedOptions = options
+        .filter(opt => opt.songName && opt.artist)
+        .sort((a, b) => (b.confidence || 0.5) - (a.confidence || 0.5))
+        .slice(0, 8);
+
+      const hasLowConfidence = sortedOptions.some(opt => (opt.confidence || 0) < 0.7);
+
+      return NextResponse.json({
+        options: sortedOptions,
+        warning: hasLowConfidence ? '部分結果信心較低，建議預覽歌詞後確認' : undefined
+      });
     }
 
-    // Mode 2: Get lyrics for specific song/artist
-    const lyricsPrompt = `Please provide the complete lyrics for "${sanitizedSongName}" by ${sanitizedArtist}.
-Return ONLY the lyrics in a JSON array format, where each object has:
-- "text": the lyric line
-- "notes": (optional) any section info like [Verse], [Chorus], [Bridge]
+    // Mode 2 & 3: Get lyrics with preview support
+    const lyricsPrompt = `You are providing lyrics for: "${sanitizedSongName}" by ${sanitizedArtist}
 
-Format: [{"text": "line1", "notes": "section"}, ...]
+CRITICAL RULES:
+1. ONLY provide lyrics if you are reasonably certain this is a REAL song
+2. If you're unsure, return {"error": "unsure", "message": "無法確認此歌曲，請提供更多資訊"}
+3. DO NOT make up or hallucinate lyrics
+4. Include the complete song structure (verse, chorus, bridge)
+5. Use Traditional Chinese for Chinese lyrics
 
-Only return the JSON array, no other text. Use Traditional Chinese.`;
+Return JSON with format:
+{
+  "lyrics": [
+    {"text": "歌詞行", "notes": "Verse/Chorus/Bridge (optional)"},
+    ...
+  ],
+  "confidence": 0.9,
+  "sourceNote": "AI generated, please verify"
+}
+
+Return ONLY the JSON object, no other text.`;
 
     const lyricsResult = await model.generateContent(lyricsPrompt);
     const lyricsResponse = await lyricsResult.response;
@@ -136,11 +165,11 @@ Only return the JSON array, no other text. Use Traditional Chinese.`;
     }
     cleanedLyrics = cleanedLyrics.trim();
 
-    let lyrics: LyricLine[];
+    let parsedResult: any;
     try {
-      lyrics = JSON.parse(cleanedLyrics);
+      parsedResult = JSON.parse(cleanedLyrics);
     } catch {
-      // Parse as plain text lines
+      // Try to parse as plain text lines (fallback)
       const lines = lyricsText
         .split('\n')
         .map(line => line.trim())
@@ -152,9 +181,19 @@ Only return the JSON array, no other text. Use Traditional Chinese.`;
           return { text: line, notes: undefined };
         })
         .filter(item => item.text.length > 0);
-      lyrics = lines;
+
+      parsedResult = { lyrics: lines, confidence: 0.5 };
     }
 
+    // Check if AI returned an error/unsure response
+    if (parsedResult.error === 'unsure') {
+      return NextResponse.json({
+        error: 'unsure',
+        message: parsedResult.message || '無法確認此歌曲，請提供更多資訊或手動輸入歌詞'
+      }, { status: 200 });
+    }
+
+    const lyrics = parsedResult.lyrics;
     if (!Array.isArray(lyrics) || lyrics.length === 0) {
       return NextResponse.json({ error: 'No lyrics found' }, { status: 404 });
     }
@@ -166,7 +205,17 @@ Only return the JSON array, no other text. Use Traditional Chinese.`;
         notes: item.notes?.trim() || undefined,
       }));
 
-    return NextResponse.json({ lyrics: validLyrics });
+    const confidence = parsedResult.confidence || 0.5;
+    const warning = confidence < 0.7
+      ? '歌詞信心較低，強烈建議預覽確認'
+      : 'AI 生成的歌詞，建議預覽確認正確性';
+
+    return NextResponse.json({
+      lyrics: validLyrics,
+      confidence,
+      sourceNote: parsedResult.sourceNote || 'AI generated, please verify',
+      warning
+    });
 
   } catch (error) {
     console.error('Error searching lyrics:', error);
