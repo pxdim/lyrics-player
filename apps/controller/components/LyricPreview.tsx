@@ -1,8 +1,9 @@
 'use client';
 
-import { Lyric, parseChordsFromLyric, transposeChord, DESIGN_TOKENS } from 'shared';
-import { Clock, Music2, Play, Pause, RotateCcw, Plus, Minus } from 'lucide-react';
+import { Lyric, parseChordsFromLyric, transposeChord, DESIGN_TOKENS, useLyricAnimation } from 'shared';
+import { Clock, Music2, Play, Pause, RotateCcw, Plus, Minus, List } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import type { AnimationConfig } from 'shared';
 
 interface LyricPreviewProps {
   lyrics: Lyric[];
@@ -22,6 +23,8 @@ interface LyricPreviewProps {
   onNext: () => void;
   onPlayPause: () => void;
   isPlaying: boolean;
+  onSelectLyric?: (index: number) => void;
+  animationConfig?: AnimationConfig;
 }
 
 export default function LyricPreview({
@@ -42,8 +45,23 @@ export default function LyricPreview({
   onNext,
   onPlayPause,
   isPlaying,
+  onSelectLyric,
+  animationConfig,
 }: LyricPreviewProps) {
   const [showTimerControls, setShowTimerControls] = useState(false);
+  const [showLyricList, setShowLyricList] = useState(false);
+
+  // 使用動畫 Hook
+  const animation = useLyricAnimation(
+    currentIndex,
+    animationConfig || {
+      enabled: true,
+      type: 'crossfade',
+      duration: 400,
+      easing: 'ease-in-out',
+      rapidSwitchMode: 'immediate',
+    }
+  );
 
   const currentLyric = currentIndex !== null ? lyrics[currentIndex] : null;
   const nextLyric = currentIndex !== null && currentIndex < lyrics.length - 1 ? lyrics[currentIndex + 1] : null;
@@ -211,22 +229,132 @@ export default function LyricPreview({
             Chords {showChords ? 'ON' : 'OFF'}
           </span>
         </button>
+
+        {/* Lyric List Toggle */}
+        {onSelectLyric && (
+          <button
+            onClick={() => setShowLyricList(!showLyricList)}
+            className="flex items-center gap-2 px-3 py-3 rounded-xl"
+            style={{ backgroundColor: showLyricList ? DESIGN_TOKENS.colors.accent : DESIGN_TOKENS.colors.panel }}
+            aria-label={showLyricList ? "隱藏歌詞列表" : "顯示歌詞列表"}
+          >
+            <List size={18} color={showLyricList ? DESIGN_TOKENS.colors.text.primary : DESIGN_TOKENS.colors.text.tertiary} />
+            <span
+              style={{
+                fontSize: DESIGN_TOKENS.fontSize.sm,
+                fontWeight: DESIGN_TOKENS.fontWeight.medium,
+                color: showLyricList ? DESIGN_TOKENS.colors.text.primary : DESIGN_TOKENS.colors.text.secondary,
+              }}
+            >
+              歌詞列表
+            </span>
+          </button>
+        )}
       </div>
+
+      {/* Main Content Area with optional Lyric List */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Lyric List Side Panel */}
+        {showLyricList && onSelectLyric && (
+          <div
+            className="w-64 overflow-y-auto rounded-2xl p-4"
+            style={{ backgroundColor: DESIGN_TOKENS.colors.panel }}
+          >
+            <p
+              style={{
+                fontSize: DESIGN_TOKENS.fontSize.sm,
+                color: DESIGN_TOKENS.colors.text.tertiary,
+                fontWeight: DESIGN_TOKENS.fontWeight.medium,
+                marginBottom: '12px',
+              }}
+            >
+              快速跳行
+            </p>
+            <div className="space-y-1">
+              {lyrics.map((lyric, index) => {
+                const isActive = currentIndex === index;
+                return (
+                  <button
+                    key={lyric.id}
+                    onClick={() => {
+                      onSelectLyric(index);
+                      setShowLyricList(false);
+                    }}
+                    className="w-full text-left p-2 rounded-lg transition-all"
+                    style={{
+                      backgroundColor: isActive ? DESIGN_TOKENS.colors.accent : 'transparent',
+                    }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span
+                        style={{
+                          fontSize: DESIGN_TOKENS.fontSize.xs,
+                          color: isActive ? DESIGN_TOKENS.colors.text.primary : DESIGN_TOKENS.colors.text.tertiary,
+                          minWidth: '20px',
+                        }}
+                      >
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <p
+                        style={{
+                          fontSize: DESIGN_TOKENS.fontSize.sm,
+                          color: isActive ? DESIGN_TOKENS.colors.text.primary : DESIGN_TOKENS.colors.text.secondary,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {lyric.text}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
       {/* Lyric Preview Card */}
       <div
-        className="flex-1 flex flex-col items-center justify-center rounded-2xl p-12 gap-8"
+        className="flex-1 flex flex-col items-center justify-center rounded-2xl p-12 gap-8 relative"
         style={{ backgroundColor: DESIGN_TOKENS.colors.panel }}
       >
-        {currentLyric ? (
-          <>
-            {/* Current Lyric */}
+        {/* Previous lyric (exiting animation) */}
+        {animation.previousIndex !== null && animation.isExiting && lyrics[animation.previousIndex] && (
+          <div
+            className="absolute inset-0 flex items-center justify-center p-12"
+            style={{
+              opacity: animation.exitOpacity,
+              transform: animation.exitTransform,
+              transition: `all ${animationConfig?.duration || 400}ms ${animationConfig?.easing || 'ease-in-out'}`,
+              pointerEvents: 'none',
+            }}
+          >
             <p
               style={{
                 fontSize: DESIGN_TOKENS.fontSize['4xl'],
                 fontWeight: DESIGN_TOKENS.fontWeight.semibold,
                 color: DESIGN_TOKENS.colors.text.primary,
                 textAlign: 'center',
+              }}
+            >
+              {lyrics[animation.previousIndex].text}
+            </p>
+          </div>
+        )}
+
+        {currentLyric ? (
+          <>
+            {/* Current Lyric with animation */}
+            <p
+              style={{
+                fontSize: DESIGN_TOKENS.fontSize['4xl'],
+                fontWeight: DESIGN_TOKENS.fontWeight.semibold,
+                color: DESIGN_TOKENS.colors.text.primary,
+                textAlign: 'center',
+                opacity: animation.isEntering ? animation.enterOpacity : 1,
+                transform: animation.enterTransform,
+                transition: animation.isEntering || animation.isExiting
+                  ? `all ${animationConfig?.duration || 400}ms ${animationConfig?.easing || 'ease-in-out'}`
+                  : 'none',
               }}
             >
               {currentLyric.text}

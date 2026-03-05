@@ -140,3 +140,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+// DELETE - 刪除歌曲（通過 songId/notes 欄位）
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { sessionId, songId } = body;
+
+    if (!sessionId || !songId) {
+      return NextResponse.json(
+        { error: 'sessionId and songId are required' },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createSupabaseClient();
+
+    // songId 實際上是歌曲名稱（從 GET 返回的 songName）
+    // 我們需要刪除所有 notes 匹配該歌曲名稱的歌詞
+    const { error } = await supabase
+      .from('lyrics')
+      .delete()
+      .eq('session_id', sessionId)
+      .eq('notes', songId);
+
+    if (error) {
+      console.error('Error deleting song:', error);
+      return NextResponse.json({ error: 'Failed to delete song' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error in DELETE /api/playlist:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

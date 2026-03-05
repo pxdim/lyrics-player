@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, ChevronRight, Music3 } from 'lucide-react';
+import { Plus, ChevronRight, Music3, Trash2, MoreVertical } from 'lucide-react';
 import { DESIGN_TOKENS } from 'shared';
 import type { SongGroup } from 'shared';
 
@@ -13,6 +13,7 @@ interface PlaylistSidebarProps {
   onNextSong: () => void;
   onPreviousSong: () => void;
   onAddSong?: () => void;
+  onDeleteSong?: (songIndex: number) => void;
   autoPlay?: boolean;
   onAutoPlayChange?: (enabled: boolean) => void;
   autoPlayInterval?: number;
@@ -26,6 +27,7 @@ export function PlaylistSidebar({
   onNextSong,
   onPreviousSong,
   onAddSong,
+  onDeleteSong,
   autoPlay = false,
   onAutoPlayChange,
   autoPlayInterval = 5000,
@@ -33,6 +35,43 @@ export function PlaylistSidebar({
   const [songs, setSongs] = useState<SongGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hoveredSongIndex, setHoveredSongIndex] = useState<number | null>(null);
+
+  // 處理刪除歌曲
+  const handleDeleteSong = async (songIndex: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // 防止觸發選擇歌曲
+
+    const song = songs[songIndex];
+    if (!song) return;
+
+    // 確認刪除
+    if (!confirm(`確定要刪除「${song.songName}」嗎？`)) return;
+
+    try {
+      const response = await fetch('/api/playlist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          songId: song.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '刪除失敗');
+      }
+
+      // 重新載入歌單
+      loadPlaylist();
+
+      // 通知父組件
+      onDeleteSong?.(songIndex);
+    } catch (err) {
+      console.error('Error deleting song:', err);
+      alert(err instanceof Error ? err.message : '刪除歌曲失敗');
+    }
+  };
 
   // 載入歌單
   const loadPlaylist = async () => {
@@ -196,6 +235,8 @@ export function PlaylistSidebar({
               <div
                 key={song.id}
                 onClick={() => onSongSelect(index)}
+                onMouseEnter={() => setHoveredSongIndex(index)}
+                onMouseLeave={() => setHoveredSongIndex(null)}
                 className="cursor-pointer transition-all"
                 style={{
                   padding: '16px',
@@ -206,8 +247,33 @@ export function PlaylistSidebar({
                   border: isCurrent
                     ? '1px solid rgba(201, 169, 98, 0.5)'
                     : '1px solid transparent',
+                  position: 'relative',
                 }}
               >
+                {/* Delete button */}
+                {hoveredSongIndex === index && (
+                  <button
+                    onClick={(e) => handleDeleteSong(index, e)}
+                    style={{
+                      position: 'absolute',
+                      top: '8px',
+                      right: '8px',
+                      padding: '4px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                      border: '1px solid rgba(239, 68, 68, 0.5)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      color: '#EF4444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="刪除歌曲"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+
                 {/* Song Title */}
                 <div
                   style={{
@@ -215,6 +281,7 @@ export function PlaylistSidebar({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     marginBottom: '8px',
+                    paddingRight: hoveredSongIndex === index ? '24px' : '0',
                   }}
                 >
                   <span

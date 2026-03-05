@@ -64,6 +64,15 @@ export default function SessionPage() {
   const [transpose, setTranspose] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Animation config
+  const [animationConfig, setAnimationConfig] = useState({
+    enabled: true,
+    type: 'crossfade' as const,
+    duration: 400,
+    easing: 'ease-in-out' as const,
+    rapidSwitchMode: 'immediate' as const,
+  });
+
   // Timer state
   const [timerDuration, setTimerDuration] = useState(300); // 5 minutes default
   const [timerRemaining, setTimerRemaining] = useState(300);
@@ -390,22 +399,23 @@ export default function SessionPage() {
     }
   };
 
-  // Load playlist
-  useEffect(() => {
-    const loadPlaylist = async () => {
-      if (!session) return;
+  // Load playlist function
+  const loadPlaylist = async () => {
+    if (!session) return;
 
-      try {
-        const response = await fetch(`/api/playlist?sessionId=${session.id}`);
-        if (response.ok) {
-          const data = await response.json();
-          setPlaylistSongs(data.songs || []);
-        }
-      } catch (error) {
-        console.error('Error loading playlist:', error);
+    try {
+      const response = await fetch(`/api/playlist?sessionId=${session.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setPlaylistSongs(data.songs || []);
       }
-    };
+    } catch (error) {
+      console.error('Error loading playlist:', error);
+    }
+  };
 
+  // Load playlist on session change
+  useEffect(() => {
     loadPlaylist();
   }, [session]);
 
@@ -452,13 +462,16 @@ export default function SessionPage() {
       }));
       setLyrics(newLyrics);
 
-      // 設定顯示第一句
+      // 設定顯示第一句，啟用動畫
+      const prevIndex = displayState.currentIndex;
       broadcastDisplayState({
         currentIndex: lyricIndex,
         isVisible: true,
         opacity: 1,
         isFadingIn: false,
         isFadingOut: false,
+        isAnimating: true,
+        previousIndex: prevIndex,
       });
     } catch (error) {
       console.error('Error in handleSelectSong:', error);
@@ -483,6 +496,32 @@ export default function SessionPage() {
 
   const handleAutoPlayChange = (enabled: boolean) => {
     setAutoPlay(enabled);
+  };
+
+  const handleDeleteSong = async (songIndex: number) => {
+    // 如果刪除的是當前歌曲，需要切換到其他歌曲
+    if (songIndex === currentSongIndex) {
+      if (playlistSongs.length > 1) {
+        // 切換到第一首或下一首
+        const nextIndex = songIndex >= playlistSongs.length - 1 ? 0 : songIndex;
+        await handleSelectSong(nextIndex);
+      } else {
+        // 沒有其他歌曲了，清空當前狀態
+        setCurrentSongIndex(null);
+        setCurrentLyricIndex(null);
+        setLyrics([]);
+        broadcastDisplayState({
+          currentIndex: null,
+          isVisible: false,
+        });
+      }
+    } else if (songIndex < currentSongIndex) {
+      // 如果刪除的歌曲在當前歌曲之前，需要調整索引
+      setCurrentSongIndex(currentSongIndex - 1);
+    }
+
+    // 重新載入歌單
+    loadPlaylist();
   };
 
   // AI Search functions
@@ -666,6 +705,7 @@ export default function SessionPage() {
           onNextSong={handleNextSong}
           onPreviousSong={handlePreviousSong}
           onAddSong={() => setShowAISearch(true)}
+          onDeleteSong={handleDeleteSong}
           autoPlay={autoPlay}
           onAutoPlayChange={handleAutoPlayChange}
         />
@@ -711,6 +751,8 @@ export default function SessionPage() {
             onNext={handleNext}
             onPlayPause={() => setIsPlaying(!isPlaying)}
             isPlaying={isPlaying}
+            onSelectLyric={handleSelectLyric}
+            animationConfig={animationConfig}
           />
         </div>
 
