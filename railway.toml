@@ -1,11 +1,20 @@
-# Railway deployment configuration
-[build]
+# Railway deployment configuration for GitHub auto-deploy
+# Railway 會從 GitHub repo 根目錄讀取此配置
+
+# === Controller 服務 ===
+# 在 Railway 中選擇 Dockerfile.controller
+[build.controller]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.controller"
 
-[deploy]
+[deploy.controller]
 healthcheckPath = "/"
 
-[controller.service]
-name = "lyrics-player-controller"
-source = "."
+# === Display 服務 ===
+# 在 Railway 中選擇 Dockerfile.display
+[build.display]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.display"
+
+[deploy.display]
+healthcheckPath = "/"
