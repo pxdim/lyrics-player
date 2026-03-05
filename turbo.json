@@ -8,6 +8,10 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "test": {
+      "dependsOn": ["shared#test", "controller#test"],
+      "outputs": ["coverage/**"]
     }
   }
 }
