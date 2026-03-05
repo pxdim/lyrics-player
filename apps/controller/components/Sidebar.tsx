@@ -2,7 +2,7 @@
 
 import { Lyric } from 'shared';
 import { DESIGN_TOKENS } from 'shared';
-import { Copy, Music, Sparkles, Plus, Play } from 'lucide-react';
+import { Copy, Music, Sparkles, Plus, Play, LogOut } from 'lucide-react';
 
 interface SidebarProps {
   sessionCode: string;
@@ -13,6 +13,7 @@ interface SidebarProps {
   onShowAISearch: () => void;
   onAddSong: () => void;
   onSelectLyric: (index: number) => void;
+  onSwitchRoom?: () => void;
 }
 
 export default function Sidebar({
@@ -24,6 +25,7 @@ export default function Sidebar({
   onShowAISearch,
   onAddSong,
   onSelectLyric,
+  onSwitchRoom,
 }: SidebarProps) {
   const copyCode = () => {
     navigator.clipboard.writeText(sessionCode);
@@ -88,6 +90,21 @@ export default function Sidebar({
             {deviceCount} devices connected
           </span>
         </div>
+
+        {/* Switch Room Button */}
+        {onSwitchRoom && (
+          <button
+            onClick={onSwitchRoom}
+            className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg w-full transition-all hover:bg-white/5"
+            style={{
+              fontSize: DESIGN_TOKENS.fontSize.sm,
+              color: DESIGN_TOKENS.colors.text.tertiary,
+            }}
+          >
+            <LogOut size={14} />
+            <span>切換房間</span>
+          </button>
+        )}
       </div>
 
       {/* Divider */}

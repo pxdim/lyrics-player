@@ -40,6 +40,11 @@ export default function SessionPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<{ songName: string; artist: string }[]>([]);
 
+  // Room switch states
+  const [showRoomSwitcher, setShowRoomSwitcher] = useState(false);
+  const [switchCode, setSwitchCode] = useState('');
+  const [isSwitching, setIsSwitching] = useState(false);
+
   // UI State
   const [currentThemeId, setCurrentThemeId] = useState('worship-warm');
   const [displayMode, setDisplayMode] = useState<'audience' | 'stage'>('stage');
@@ -324,6 +329,39 @@ export default function SessionPage() {
     }
   };
 
+  // Switch room handler
+  const handleSwitchRoom = async () => {
+    const trimmedCode = switchCode.trim().toUpperCase();
+    if (trimmedCode.length !== 6) {
+      alert('請輸入 6 位連接碼');
+      return;
+    }
+
+    if (trimmedCode === code) {
+      alert('這就是當前的房間');
+      return;
+    }
+
+    setIsSwitching(true);
+
+    try {
+      // Validate the new session code
+      const response = await fetch(`/api/session/validate?code=${trimmedCode}`);
+      if (!response.ok) {
+        alert('找不到此房間');
+        setIsSwitching(false);
+        return;
+      }
+
+      // Navigate to new session
+      router.push(`/session/${trimmedCode}`);
+    } catch (error) {
+      console.error('Error switching room:', error);
+      alert('切換房間失敗');
+      setIsSwitching(false);
+    }
+  };
+
   // AI Search functions
   const handleSearchOptions = async (e?: FormEvent) => {
     if (e) e.preventDefault();
@@ -479,6 +517,7 @@ export default function SessionPage() {
           onShowAISearch={() => setShowAISearch(true)}
           onAddSong={() => setShowAISearch(true)}
           onSelectLyric={handleSelectLyric}
+          onSwitchRoom={() => setShowRoomSwitcher(true)}
         />
       </div>
 
@@ -590,6 +629,82 @@ export default function SessionPage() {
         onSearchChange={setSearchQuery}
         onSearch={handleSearchOptions}
       />
+
+      {/* Room Switcher Modal */}
+      {showRoomSwitcher && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6"
+            style={{ backgroundColor: DESIGN_TOKENS.colors.panel }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2
+                className="text-xl font-semibold"
+                style={{ color: DESIGN_TOKENS.colors.text.primary }}
+              >
+                切換房間
+              </h2>
+              <button
+                onClick={() => {
+                  setShowRoomSwitcher(false);
+                  setSwitchCode('');
+                }}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label
+                  className="block text-sm mb-2"
+                  style={{ color: DESIGN_TOKENS.colors.text.secondary }}
+                >
+                  輸入房間碼
+                </label>
+                <input
+                  type="text"
+                  value={switchCode}
+                  onChange={(e) => setSwitchCode(e.target.value.toUpperCase())}
+                  placeholder="XXXXXX"
+                  maxLength={6}
+                  className="w-full px-4 py-3 rounded-lg text-center text-2xl font-mono tracking-widest uppercase"
+                  style={{
+                    backgroundColor: DESIGN_TOKENS.colors.input,
+                    color: DESIGN_TOKENS.colors.text.primary,
+                    border: `1px solid ${DESIGN_TOKENS.colors.panelBorder}`,
+                  }}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && switchCode.length === 6) {
+                      handleSwitchRoom();
+                    }
+                  }}
+                />
+              </div>
+
+              <p className="text-sm" style={{ color: DESIGN_TOKENS.colors.text.tertiary }}>
+                輸入顯示端顯示的 6 位連接碼以切換房間
+              </p>
+
+              <button
+                onClick={handleSwitchRoom}
+                disabled={switchCode.length !== 6 || isSwitching}
+                className="w-full py-3 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: DESIGN_TOKENS.colors.accent,
+                  color: DESIGN_TOKENS.colors.text.primary,
+                }}
+              >
+                {isSwitching ? '切換中...' : '切換房間'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

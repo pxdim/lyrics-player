@@ -7,6 +7,8 @@ import type { DisplayState, StyleConfig, Lyric } from 'shared';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+const STORAGE_KEY = 'lyrics_display_session';
+
 function generateSessionCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -43,14 +45,79 @@ const DEFAULT_STYLE: StyleConfig = {
 };
 
 type ConnectionState = 'registering' | 'waiting' | 'connected' | 'ready';
+type RoomManagementState = 'none' | 'menu';
 
 export default function DisplayPage() {
+  const [roomManagement, setRoomManagement] = useState<RoomManagementState>('none');
+  const [customCode, setCustomCode] = useState('');
   const sessionCodeRef = useRef(generateSessionCode());
-  const [sessionCode] = useState(sessionCodeRef.current);
+  const [sessionCode, setSessionCode] = useState(sessionCodeRef.current);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>('registering');
   const [lyrics, setLyrics] = useState<Lyric[]>([]);
   const [lyricsCount, setLyricsCount] = useState(0);
+
+  // Load saved session from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.code && data.sessionId) {
+          console.log('[Display] Found saved session:', data.code);
+          setSessionCode(data.code);
+          // Try to reconnect with saved session
+          reconnectToSession(data.sessionId, data.code);
+        }
+      } catch (e) {
+        console.error('[Display] Failed to parse saved session:', e);
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+  }, []);
+
+  // Reconnect to existing session
+  const reconnectToSession = async (savedSessionId: string, savedCode: string) => {
+    console.log('[Display] Attempting to reconnect to:', savedSessionId);
+    const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
+    supabaseRef.current = supabase;
+
+    // Check if session still exists
+    const { data: sessionData, error } = await supabase
+      .from('sessions')
+      .select('id, code')
+      .eq('id', savedSessionId)
+      .single();
+
+    if (error || !sessionData) {
+      console.log('[Display] Session no longer exists, creating new one');
+      localStorage.removeItem(STORAGE_KEY);
+      // Fall through to create new session
+      return false;
+    }
+
+    console.log('[Display] Session exists, reconnecting');
+    setSessionId(savedSessionId);
+    setSessionCode(savedCode);
+    setConnectionState('connected');
+
+    // Load lyrics
+    const { data: lyricsData } = await supabase
+      .from('lyrics')
+      .select('*')
+      .eq('session_id', savedSessionId)
+      .order('order_index');
+
+    if (lyricsData) {
+      setLyrics(lyricsData);
+      setLyricsCount(lyricsData.length);
+      if (lyricsData.length > 0) {
+        setConnectionState('ready');
+      }
+    }
+
+    return true;
+  };
 
   const [displayState, setDisplayState] = useState<DisplayState>({
     currentIndex: null,
@@ -64,16 +131,19 @@ export default function DisplayPage() {
   const supabaseRef = useRef<any>(null);
   const channelRef = useRef<any>(null);
 
-  // Register session on mount
+  // Register session on mount (only if not already reconnected)
   useEffect(() => {
+    if (sessionId) return; // Already connected via reconnect
+
     const registerSession = async () => {
-      console.log('[Display] Registering session...');
+      console.log('[Display] Registering new session...');
       const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
       supabaseRef.current = supabase;
 
+      const newSessionId = crypto.randomUUID();
       const { data, error } = await supabase
         .from('sessions')
-        .insert({ id: crypto.randomUUID(), code: sessionCode })
+        .insert({ id: newSessionId, code: sessionCode })
         .select('id, code')
         .single();
 
@@ -85,6 +155,14 @@ export default function DisplayPage() {
 
       console.log('[Display] Session registered:', data.id);
       setSessionId(data.id);
+
+      // Save to localStorage
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        sessionId: data.id,
+        code: data.code,
+        timestamp: Date.now(),
+      }));
+
       setConnectionState('waiting');
 
       // Load initial lyrics
@@ -109,7 +187,7 @@ export default function DisplayPage() {
     };
 
     registerSession();
-  }, [sessionCode]);
+  }, [sessionCode, sessionId]);
 
   // Setup Realtime subscription
   useEffect(() => {
@@ -242,6 +320,66 @@ export default function DisplayPage() {
     }
   }, [displayState.isFadingIn, displayState.isFadingOut, displayState.isVisible, style.fadeDuration]);
 
+  // Room management functions
+  const handleRegenerateCode = async () => {
+    const newCode = generateSessionCode();
+    const supabase = supabaseRef.current;
+    if (!supabase || !sessionId) return;
+
+    // Update session code in database
+    const { error } = await supabase
+      .from('sessions')
+      .update({ code: newCode })
+      .eq('id', sessionId);
+
+    if (error) {
+      console.error('[Display] Failed to update code:', error);
+      alert('更新碼失敗');
+      return;
+    }
+
+    // Update state and localStorage
+    setSessionCode(newCode);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      sessionId,
+      code: newCode,
+      timestamp: Date.now(),
+    }));
+    setRoomManagement('none');
+  };
+
+  const handleJoinCustomCode = async () => {
+    const trimmedCode = customCode.trim().toUpperCase();
+    if (trimmedCode.length !== 6) {
+      alert('請輸入 6 位連接碼');
+      return;
+    }
+
+    const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
+
+    // Find session by code
+    const { data: sessionData, error } = await supabase
+      .from('sessions')
+      .select('id, code')
+      .eq('code', trimmedCode)
+      .single();
+
+    if (error || !sessionData) {
+      alert('找不到此連接碼');
+      return;
+    }
+
+    // Save to localStorage and reload
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      sessionId: sessionData.id,
+      code: sessionData.code,
+      timestamp: Date.now(),
+    }));
+
+    // Reload page to connect to new session
+    window.location.reload();
+  };
+
   // Show connection screen while waiting for lyrics
   if (lyrics.length === 0) {
     return (
@@ -311,6 +449,48 @@ export default function DisplayPage() {
               <span>已載入 {lyricsCount} 行歌詞</span>
             </div>
           )}
+
+          {/* Room Management */}
+          <div className="mt-8 flex flex-col items-center gap-3">
+            <button
+              onClick={() => setRoomManagement(roomManagement === 'none' ? 'menu' : 'none')}
+              className="text-white/20 hover:text-white/40 text-sm flex items-center gap-2 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              房間設定
+            </button>
+
+            {roomManagement === 'menu' && (
+              <div className="flex flex-col gap-2 items-center">
+                <button
+                  onClick={handleRegenerateCode}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white/60 text-sm transition-colors"
+                >
+                  重新生成碼
+                </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
+                    placeholder="輸入碼"
+                    maxLength={6}
+                    className="w-24 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-center text-sm placeholder-white/30 focus:outline-none focus:border-white/40"
+                  />
+                  <button
+                    onClick={handleJoinCustomCode}
+                    disabled={customCode.length !== 6}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-white/60 text-sm transition-colors"
+                  >
+                    加入
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -375,9 +555,19 @@ export default function DisplayPage() {
         )}
       </div>
 
-      {/* Debug info */}
-      <div className="fixed bottom-4 right-4 text-white/10 text-xs font-mono">
-        歌詞: {lyrics.length} | 當前: {displayState.currentIndex ?? '-'} | {currentLyric ? '顯示中' : '空白'}
+      {/* Session code - visible on hover */}
+      <div className="fixed bottom-4 right-4 group">
+        {/* Hover indicator dot */}
+        <div className="w-2 h-2 bg-white/20 rounded-full group-hover:bg-white/40 transition-colors"></div>
+
+        {/* Session code popup */}
+        <div className="absolute bottom-4 right-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <div className="bg-white/10 backdrop-blur-md rounded-lg px-3 py-2 border border-white/20">
+            <p className="text-white/60 text-xs font-mono">
+              {sessionCode.slice(0, 3)}-{sessionCode.slice(3)}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
