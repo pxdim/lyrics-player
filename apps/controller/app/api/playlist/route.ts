@@ -49,11 +49,11 @@ export async function GET(request: NextRequest) {
     if (!songs[songKey]) {
       songs[songKey] = {
         id: crypto.randomUUID(),
-        song_name: songKey,
+        songName: songKey,
         artist: null,
         lyrics: [],
-        order_index: songOrder++,
-        is_current: songOrder === 1,
+        orderIndex: songOrder++,
+        isCurrent: songOrder === 1,
       };
     }
 
@@ -128,10 +128,11 @@ export async function POST(request: NextRequest) {
       success: true,
       song: {
         id: crypto.randomUUID(),
-        song_name: songName,
+        songName: songName,
         artist: artist || null,
         lyrics: lyrics,
-        order_index: nextOrderIndex,
+        orderIndex: nextOrderIndex,
+        isCurrent: true,
       },
     });
   } catch (error) {
