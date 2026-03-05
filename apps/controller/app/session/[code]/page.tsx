@@ -599,12 +599,13 @@ export default function SessionPage() {
 
       if (deleteError) throw deleteError;
 
-      const lyricsToInsert = foundLyrics.map((lyric: { text: string; notes?: string }) => ({
+      const lyricsToInsert = foundLyrics.map((lyric: { text: string; notes?: string }, index: number) => ({
         id: crypto.randomUUID(),
         session_id: session.id,
         text: lyric.text,
-        notes: lyric.notes || null,
-        order_index: foundLyrics.indexOf(lyric),
+        // 確保 notes 總是有值的，用作歌曲識別碼
+        notes: lyric.notes && lyric.notes.trim() ? lyric.notes.trim() : `${songName}${artist ? ` - ${artist}` : ''}`,
+        order_index: index,
       }));
 
       const { error: insertError } = await supabase.from('lyrics').insert(lyricsToInsert);

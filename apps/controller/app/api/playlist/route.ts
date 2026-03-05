@@ -35,16 +35,20 @@ export async function GET(request: NextRequest) {
 
   // 如果沒有歌詞，返回空陣列
   if (!lyrics || lyrics.length === 0) {
+    console.log(`No lyrics found for session ${sessionId}`);
     return NextResponse.json({ songs: [], currentSongIndex: null });
   }
 
-  // 將歌詞按歌曲分組（簡單做法：每次 AI 匯入都是一首新歌）
-  // 這裡我們假設每首歌的歌詞是連續的，通過 notes 來識別不同的歌
+  console.log(`Found ${lyrics.length} lyrics for session ${sessionId}`);
+
+  // 將歌詞按歌曲分組
+  // 通過 notes 來識別不同的歌，notes 為 null 時使用默認名稱
   const songs: Record<string, any> = {};
   let songOrder = 0;
 
   lyrics.forEach((lyric) => {
-    const songKey = lyric.notes || `歌曲${songOrder + 1}`;
+    // 使用 notes 作為歌曲識別碼，如果 notes 為 null 或空字符串，使用默認名稱
+    const songKey = lyric.notes && lyric.notes.trim() ? lyric.notes.trim() : `歌曲${songOrder + 1}`;
 
     if (!songs[songKey]) {
       songs[songKey] = {
@@ -52,9 +56,10 @@ export async function GET(request: NextRequest) {
         songName: songKey,
         artist: null,
         lyrics: [],
-        orderIndex: songOrder++,
-        isCurrent: songOrder === 1,
+        orderIndex: songOrder,
+        isCurrent: songOrder === 0,
       };
+      songOrder++;
     }
 
     songs[songKey].lyrics.push({
@@ -64,6 +69,7 @@ export async function GET(request: NextRequest) {
   });
 
   const songsArray = Object.values(songs);
+  console.log(`Returning ${songsArray.length} songs`);
 
   return NextResponse.json({
     songs: songsArray,
