@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { AnimationConfig, AnimationType } from '../types';
 
 interface AnimationState {
@@ -26,11 +26,20 @@ export function useLyricAnimation(
 ) {
   const [state, setState] = useState<AnimationState>(INITIAL_STATE);
   const [displayIndex, setDisplayIndex] = useState<number | null>(null);
-  const animationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const animationTimersRef = useRef<NodeJS.Timeout[]>([]);
   const previousIndexRef = useRef<number | null>(null);
+
+  // Stable callback reference
+  const handleAnimationComplete = useCallback((newIndex: number) => {
+    onAnimationComplete?.(newIndex);
+  }, [onAnimationComplete]);
 
   // 當索引變化時觸發動畫
   useEffect(() => {
+    // Clear all pending timers
+    animationTimersRef.current.forEach(clearTimeout);
+    animationTimersRef.current = [];
+
     if (!animationConfig.enabled || currentIndex === null) {
       setDisplayIndex(currentIndex);
       setState(INITIAL_STATE);
@@ -40,11 +49,6 @@ export function useLyricAnimation(
     // 如果索引沒有變化，不執行動畫
     if (currentIndex === previousIndexRef.current) {
       return;
-    }
-
-    // 清除之前的動畫計時器
-    if (animationTimerRef.current) {
-      clearTimeout(animationTimerRef.current);
     }
 
     const isFirstLoad = previousIndexRef.current === null;
@@ -58,7 +62,13 @@ export function useLyricAnimation(
 
     // 開始動畫序列
     startAnimation(currentIndex);
-  }, [currentIndex, animationConfig]);
+
+    // Cleanup function
+    return () => {
+      animationTimersRef.current.forEach(clearTimeout);
+      animationTimersRef.current = [];
+    };
+  }, [currentIndex, animationConfig, handleAnimationComplete]);
 
   const startAnimation = (newIndex: number) => {
     const { type, duration, easing } = animationConfig;
@@ -76,7 +86,7 @@ export function useLyricAnimation(
           enterTransform: '',
         });
 
-        animationTimerRef.current = setTimeout(() => {
+        animationTimersRef.current.push(setTimeout(() => {
           setDisplayIndex(newIndex);
           setState({
             isExiting: false,
@@ -87,12 +97,12 @@ export function useLyricAnimation(
             enterTransform: '',
           });
 
-          animationTimerRef.current = setTimeout(() => {
+          animationTimersRef.current.push(setTimeout(() => {
             setState(INITIAL_STATE);
             previousIndexRef.current = newIndex;
-            onAnimationComplete?.(newIndex);
-          }, halfDuration);
-        }, halfDuration);
+            handleAnimationComplete(newIndex);
+          }, halfDuration));
+        }, halfDuration));
         break;
 
       case 'crossfade':
@@ -107,11 +117,11 @@ export function useLyricAnimation(
           enterTransform: '',
         });
 
-        animationTimerRef.current = setTimeout(() => {
+        animationTimersRef.current.push(setTimeout(() => {
           setState(INITIAL_STATE);
           previousIndexRef.current = newIndex;
-          onAnimationComplete?.(newIndex);
-        }, duration);
+          handleAnimationComplete(newIndex);
+        }, duration));
         break;
 
       case 'slide':
@@ -127,7 +137,7 @@ export function useLyricAnimation(
           enterTransform: `translateX(${-direction * 100}%)`,
         });
 
-        animationTimerRef.current = setTimeout(() => {
+        animationTimersRef.current.push(setTimeout(() => {
           setState({
             isExiting: false,
             isEntering: false,
@@ -136,13 +146,13 @@ export function useLyricAnimation(
             exitTransform: `translateX(${direction * 100}%)`,
             enterTransform: 'translateX(0)',
           });
-        }, 50);
+        }, 50));
 
-        animationTimerRef.current = setTimeout(() => {
+        animationTimersRef.current.push(setTimeout(() => {
           setState(INITIAL_STATE);
           previousIndexRef.current = newIndex;
-          onAnimationComplete?.(newIndex);
-        }, duration);
+          handleAnimationComplete(newIndex);
+        }, duration));
         break;
 
       case 'scale':
@@ -157,7 +167,7 @@ export function useLyricAnimation(
           enterTransform: 'scale(1.2)',
         });
 
-        animationTimerRef.current = setTimeout(() => {
+        animationTimersRef.current.push(setTimeout(() => {
           setState({
             isExiting: false,
             isEntering: false,
@@ -166,13 +176,13 @@ export function useLyricAnimation(
             exitTransform: 'scale(0.8)',
             enterTransform: 'scale(1)',
           });
-        }, 50);
+        }, 50));
 
-        animationTimerRef.current = setTimeout(() => {
+        animationTimersRef.current.push(setTimeout(() => {
           setState(INITIAL_STATE);
           previousIndexRef.current = newIndex;
-          onAnimationComplete?.(newIndex);
-        }, duration);
+          handleAnimationComplete(newIndex);
+        }, duration));
         break;
 
       default:
@@ -181,15 +191,6 @@ export function useLyricAnimation(
         previousIndexRef.current = newIndex;
     }
   };
-
-  // 清理計時器
-  useEffect(() => {
-    return () => {
-      if (animationTimerRef.current) {
-        clearTimeout(animationTimerRef.current);
-      }
-    };
-  }, []);
 
   return {
     displayIndex,
