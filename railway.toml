@@ -1,0 +1,11 @@
+# Railway deployment configuration
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "cd apps/controller && npm run start"
+healthcheckPath = "/"
+
+[controller.service]
+name = "lyrics-player-controller"
+source = "apps/controller"
