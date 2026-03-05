@@ -555,17 +555,42 @@ export default function DisplayPage() {
         )}
       </div>
 
-      {/* Session code - visible on hover */}
+      {/* Room management menu - visible on hover */}
       <div className="fixed bottom-4 right-4 group">
         {/* Hover indicator dot */}
         <div className="w-2 h-2 bg-white/20 rounded-full group-hover:bg-white/40 transition-colors"></div>
 
-        {/* Session code popup */}
+        {/* Session code popup with room options */}
         <div className="absolute bottom-4 right-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-          <div className="bg-white/10 backdrop-blur-md rounded-lg px-3 py-2 border border-white/20">
-            <p className="text-white/60 text-xs font-mono">
-              {sessionCode.slice(0, 3)}-{sessionCode.slice(3)}
-            </p>
+          <div className="bg-white/10 backdrop-blur-md rounded-lg border border-white/20 overflow-hidden">
+            {/* Session code */}
+            <div className="px-3 py-2 border-b border-white/10">
+              <p className="text-white/60 text-xs font-mono text-center">
+                {sessionCode.slice(0, 3)}-{sessionCode.slice(3)}
+              </p>
+            </div>
+
+            {/* Room options */}
+            <div className="p-1 flex flex-col gap-1">
+              <button
+                onClick={handleRegenerateCode}
+                className="px-3 py-1.5 text-white/40 text-xs hover:bg-white/10 rounded transition-colors text-left"
+              >
+                重新生成碼
+              </button>
+              <button
+                onClick={() => {
+                  const newCode = prompt('輸入房間碼：');
+                  if (newCode && newCode.length === 6) {
+                    setCustomCode(newCode);
+                    handleJoinCustomCode();
+                  }
+                }}
+                className="px-3 py-1.5 text-white/40 text-xs hover:bg-white/10 rounded transition-colors text-left"
+              >
+                加入其他房間
+              </button>
+            </div>
           </div>
         </div>
       </div>
