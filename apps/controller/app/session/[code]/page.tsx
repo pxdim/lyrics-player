@@ -481,6 +481,10 @@ export default function SessionPage() {
     }
   };
 
+  const handleAutoPlayChange = (enabled: boolean) => {
+    setAutoPlay(enabled);
+  };
+
   // AI Search functions
   const handleSearchOptions = async (e?: FormEvent) => {
     if (e) e.preventDefault();
@@ -662,6 +666,8 @@ export default function SessionPage() {
           onNextSong={handleNextSong}
           onPreviousSong={handlePreviousSong}
           onAddSong={() => setShowAISearch(true)}
+          autoPlay={autoPlay}
+          onAutoPlayChange={handleAutoPlayChange}
         />
       </div>
 

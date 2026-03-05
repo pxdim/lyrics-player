@@ -13,6 +13,9 @@ interface PlaylistSidebarProps {
   onNextSong: () => void;
   onPreviousSong: () => void;
   onAddSong?: () => void;
+  autoPlay?: boolean;
+  onAutoPlayChange?: (enabled: boolean) => void;
+  autoPlayInterval?: number;
 }
 
 export function PlaylistSidebar({
@@ -23,10 +26,12 @@ export function PlaylistSidebar({
   onNextSong,
   onPreviousSong,
   onAddSong,
+  autoPlay = false,
+  onAutoPlayChange,
+  autoPlayInterval = 5000,
 }: PlaylistSidebarProps) {
   const [songs, setSongs] = useState<SongGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [autoPlay, setAutoPlay] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 載入歌單
@@ -57,15 +62,30 @@ export function PlaylistSidebar({
 
   // 自動播放邏輯
   useEffect(() => {
-    if (!autoPlay || currentSongIndex === null) return;
+    if (!autoPlay || currentSongIndex === null || currentLyricIndex === null) return;
 
-    const interval = setInterval(() => {
-      // TODO: 實際的自動播放邏輯
-      // 這裡應該根據歌詞長度自動切換
-    }, 5000);
+    const currentSong = songs[currentSongIndex];
+    if (!currentSong) return;
 
-    return () => clearInterval(interval);
-  }, [autoPlay, currentSongIndex]);
+    // 檢查是否已到歌曲結尾
+    if (currentLyricIndex >= currentSong.lyrics.length - 1) {
+      // 歌曲結束，切換到下一首
+      if (currentSongIndex < songs.length - 1) {
+        const timer = setTimeout(() => {
+          onNextSong();
+        }, 2000);
+        return () => clearTimeout(timer);
+      }
+      return;
+    }
+
+    // 自動跳到下一句
+    const timer = setTimeout(() => {
+      onSongSelect(currentSongIndex, currentLyricIndex + 1);
+    }, autoPlayInterval);
+
+    return () => clearTimeout(timer);
+  }, [autoPlay, currentSongIndex, currentLyricIndex, songs, onSongSelect, onNextSong, autoPlayInterval]);
 
   const currentSong = currentSongIndex !== null ? songs[currentSongIndex] : null;
 
@@ -312,7 +332,7 @@ export function PlaylistSidebar({
 
         {/* Auto Play Toggle */}
         <button
-          onClick={() => setAutoPlay(!autoPlay)}
+          onClick={() => onAutoPlayChange?.(!autoPlay)}
           className="flex items-center gap-3 w-full px-4 py-3 rounded-lg"
           style={{
             backgroundColor: autoPlay ? 'rgba(201, 169, 98, 0.2)' : 'transparent',
