@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createSupabaseClient, DEFAULT_STYLE, DESIGN_TOKENS, parseChordsFromLyric, transposeChord } from 'shared';
+import { createSupabaseClient, DEFAULT_STYLE, DESIGN_TOKENS, parseChordsFromLyric, transposeChord, useLyricAnimation } from 'shared';
 import type { DisplayState, StyleConfig, Lyric, ParsedChord } from 'shared';
 
 interface LyricDisplayProps {
@@ -17,6 +17,9 @@ export function LyricDisplay({ sessionId, mode = 'stage' }: LyricDisplayProps) {
     opacity: 0,
     isFadingIn: false,
     isFadingOut: false,
+    isAnimating: false,
+    previousIndex: null,
+    animationTrigger: 0,
   });
   const [style, setStyle] = useState<StyleConfig>(DEFAULT_STYLE);
   const [showChords, setShowChords] = useState(true);
@@ -77,6 +80,16 @@ export function LyricDisplay({ sessionId, mode = 'stage' }: LyricDisplayProps) {
     }
   }, [state.isFadingIn, state.isFadingOut, state.isVisible, style.fadeDuration]);
 
+  // 使用動畫 Hook
+  const animation = useLyricAnimation(
+    state.currentIndex,
+    style.animation,
+    (newIndex) => {
+      // 動畫完成回調
+      setState(prev => ({ ...prev, isAnimating: false, previousIndex: null }));
+    }
+  );
+
   // 計算當前歌詞樣式
   const containerStyle: React.CSSProperties = {
     opacity: state.isVisible ? state.opacity : 0,
@@ -134,11 +147,27 @@ export function LyricDisplay({ sessionId, mode = 'stage' }: LyricDisplayProps) {
           : backgroundStyle.background,
       }}
     >
-      <div className="flex flex-col items-center justify-center gap-12">
+      <div className="flex flex-col items-center justify-center gap-12 relative" style={{ minHeight: '300px' }}>
+        {/* Previous lyric (exiting) */}
+        {animation.previousIndex !== null && animation.isExiting && lyrics[animation.previousIndex] && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{
+            opacity: animation.exitOpacity,
+            transform: animation.exitTransform,
+            transition: `all ${style.animation.duration}ms ${style.animation.easing}`,
+            pointerEvents: 'none',
+          }}>
+            <div className="flex flex-col items-center gap-4">
+              <div style={{ ...containerStyle, opacity: animation.exitOpacity }}>
+                {parseChordsFromLyric(lyrics[animation.previousIndex].text).text}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Main lyric with chords */}
         <div className="flex flex-col items-center gap-4">
-          {/* Chords display */}
-          {showChords && currentChords.length > 0 && mode === 'stage' && (
+          {/* Chords display - hide during exit animation */}
+          {showChords && currentChords.length > 0 && mode === 'stage' && !animation.isExiting && (
             <div className="flex items-center justify-center gap-8">
               {currentChords.map((chord, index) => (
                 <span
@@ -157,7 +186,14 @@ export function LyricDisplay({ sessionId, mode = 'stage' }: LyricDisplayProps) {
           )}
 
           {/* Main lyric text */}
-          <div style={containerStyle}>
+          <div style={{
+            ...containerStyle,
+            opacity: state.isVisible ? (animation.isEntering ? animation.enterOpacity : state.opacity) : 0,
+            transform: animation.enterTransform,
+            transition: animation.isEntering || animation.isExiting
+              ? `all ${style.animation.duration}ms ${style.animation.easing}`
+              : `opacity ${style.fadeDuration}ms ease-in-out`,
+          }}>
             {currentLyric && (
               <div style={textStyle}>
                 {currentParsed.text || currentLyric.text}
@@ -166,8 +202,8 @@ export function LyricDisplay({ sessionId, mode = 'stage' }: LyricDisplayProps) {
           </div>
         </div>
 
-        {/* Next lyric preview (stage mode only) */}
-        {mode === 'stage' && nextLyric && (
+        {/* Next lyric preview - hide during animation */}
+        {mode === 'stage' && nextLyric && !animation.isExiting && !animation.isEntering && (
           <div style={{ opacity: 0.6 }}>
             <p
               style={{

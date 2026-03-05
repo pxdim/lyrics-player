@@ -42,6 +42,13 @@ const DEFAULT_STYLE: StyleConfig = {
   fadeDuration: 400,
   padding: 60,
   lineHeight: 1.4,
+  animation: {
+    enabled: true,
+    type: 'crossfade',
+    duration: 300,
+    easing: 'ease-out',
+    rapidSwitchMode: 'immediate',
+  },
 };
 
 type ConnectionState = 'registering' | 'waiting' | 'connected' | 'ready';
@@ -125,6 +132,9 @@ export default function DisplayPage() {
     opacity: 1,
     isFadingIn: false,
     isFadingOut: false,
+    isAnimating: false,
+    previousIndex: null,
+    animationTrigger: 0,
   });
   const [style, setStyle] = useState<StyleConfig>(DEFAULT_STYLE);
 
