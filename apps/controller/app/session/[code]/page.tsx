@@ -606,41 +606,32 @@ export default function SessionPage() {
         return;
       }
 
-      // Backup existing lyrics before delete in case insert fails
+      // 獲取當前歌詞數量來確定新的 order_index 起始值
       const { data: existingLyrics } = await supabase
         .from('lyrics')
-        .select('*')
+        .select('order_index')
         .eq('session_id', session.id);
 
-      // Delete existing and insert new
-      const { error: deleteError } = await supabase
-        .from('lyrics')
-        .delete()
-        .eq('session_id', session.id);
+      const nextOrderIndex = existingLyrics?.length || 0;
 
-      if (deleteError) throw deleteError;
-
+      // 插入新歌詞（追加，不是替換）
       const lyricsToInsert = foundLyrics.map((lyric: { text: string; notes?: string }, index: number) => ({
         id: crypto.randomUUID(),
         session_id: session.id,
         text: lyric.text,
         // 確保 notes 總是有值的，用作歌曲識別碼
         notes: lyric.notes && lyric.notes.trim() ? lyric.notes.trim() : `${songName}${artist ? ` - ${artist}` : ''}`,
-        order_index: index,
+        order_index: nextOrderIndex + index,
       }));
 
       const { error: insertError } = await supabase.from('lyrics').insert(lyricsToInsert);
       if (insertError) {
-        // Restore from backup if insert fails
-        if (existingLyrics && existingLyrics.length > 0) {
-          await supabase.from('lyrics').insert(existingLyrics);
-        }
         throw insertError;
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 添加到歌單而不是替換
+      // 添加到歌單
       const newSong: SongGroup = {
         id: crypto.randomUUID(),
         songName: songName,
@@ -653,8 +644,10 @@ export default function SessionPage() {
         isCurrent: true,
       };
 
-      setPlaylistSongs([...playlistSongs, newSong]);
-      setCurrentSongIndex(playlistSongs.length);
+      // 更新所有歌曲的 isCurrent 狀態
+      const updatedSongs = playlistSongs.map(s => ({ ...s, isCurrent: false }));
+      setPlaylistSongs([...updatedSongs, newSong]);
+      setCurrentSongIndex(updatedSongs.length);
       setCurrentLyricIndex(0);
 
       // 同時更新顯示的歌詞
@@ -662,7 +655,7 @@ export default function SessionPage() {
         id: crypto.randomUUID(),
         session_id: session.id,
         text: l.text,
-        order_index: index,
+        order_index: nextOrderIndex + index,
         notes: l.notes || songName,
         created_at: new Date().toISOString(),
       })));
@@ -721,6 +714,7 @@ export default function SessionPage() {
       <div className="hidden md:block">
         <PlaylistSidebar
           sessionId={session?.id || ''}
+          sessionCode={code}
           currentSongIndex={currentSongIndex}
           currentLyricIndex={currentLyricIndex}
           onSongSelect={(songIndex, lyricIndex = 0) => handleSelectSong(songIndex, lyricIndex)}

@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, ChevronRight, Music3, Trash2, MoreVertical } from 'lucide-react';
+import { Plus, ChevronRight, Music3, Trash2, MoreVertical, Copy, Users } from 'lucide-react';
 import { DESIGN_TOKENS } from 'shared';
 import type { SongGroup } from 'shared';
 
 interface PlaylistSidebarProps {
   sessionId: string;
+  sessionCode?: string; // 房間號碼
   currentSongIndex: number | null;
   currentLyricIndex: number | null;
   onSongSelect: (songIndex: number, lyricIndex?: number) => void;
@@ -21,6 +22,7 @@ interface PlaylistSidebarProps {
 
 export function PlaylistSidebar({
   sessionId,
+  sessionCode,
   currentSongIndex,
   currentLyricIndex,
   onSongSelect,
@@ -36,6 +38,16 @@ export function PlaylistSidebar({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hoveredSongIndex, setHoveredSongIndex] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // 複製房間號碼
+  const handleCopyCode = async () => {
+    if (!sessionCode) return;
+    const displayUrl = typeof window !== 'undefined' ? `${window.location.origin}/display/${sessionCode}` : '';
+    await navigator.clipboard.writeText(displayUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // 處理刪除歌曲
   const handleDeleteSong = async (songIndex: number, e: React.MouseEvent) => {
@@ -139,6 +151,49 @@ export function PlaylistSidebar({
     >
       {/* Header */}
       <div style={{ padding: '24px 24px 16px' }}>
+        {/* 房間號碼顯示 */}
+        {sessionCode && (
+          <div
+            className="flex items-center justify-between mb-4 p-3 rounded-xl"
+            style={{ backgroundColor: 'rgba(201, 169, 98, 0.15)', border: '1px solid rgba(201, 169, 98, 0.3)' }}
+          >
+            <div className="flex items-center gap-2">
+              <Users size={16} style={{ color: '#C9A962' }} />
+              <div>
+                <p
+                  style={{
+                    fontSize: '11px',
+                    color: 'rgba(255,255,255,0.5)',
+                    margin: 0,
+                    marginBottom: '2px',
+                  }}
+                >
+                  房間號碼
+                </p>
+                <p
+                  style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: '#C9A962',
+                    margin: 0,
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {sessionCode}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleCopyCode}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg transition-all"
+              style={{ backgroundColor: 'rgba(201, 169, 98, 0.2)', color: '#C9A962' }}
+            >
+              <Copy size={14} />
+              <span style={{ fontSize: '12px' }}>{copied ? '已複製' : '複製連結'}</span>
+            </button>
+          </div>
+        )}
+
         <div
           className="flex items-center justify-between mb-4"
           style={{ gap: '12px' }}

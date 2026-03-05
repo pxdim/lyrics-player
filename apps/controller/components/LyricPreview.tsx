@@ -278,7 +278,7 @@ export default function LyricPreview({
                     key={lyric.id}
                     onClick={() => {
                       onSelectLyric(index);
-                      setShowLyricList(false);
+                      // 不關閉視窗，讓用戶可以繼續選擇
                     }}
                     className="w-full text-left p-2 rounded-lg transition-all"
                     style={{
