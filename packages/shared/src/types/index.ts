@@ -23,7 +23,41 @@ export interface DisplayState {
   opacity: number;
   isFadingIn: boolean;
   isFadingOut: boolean;
+  // 新增動畫狀態
+  isAnimating: boolean;         // 是否正在播放動畫
+  previousIndex: number | null; // 上一句歌詞索引（用於退出動畫）
+  animationTrigger: number;     // 動畫觸發計數器（用於強制重新渲染）
 }
+
+// ============ 動畫系統 ============
+
+export type AnimationType =
+  | 'none'           // 無動畫
+  | 'fade-out-in'    // 淡出後淡入
+  | 'crossfade'      // 交錯淡入淡出
+  | 'slide'          // 滑入滑出
+  | 'scale';         // 縮放效果
+
+export type RapidSwitchMode =
+  | 'immediate'      // 立即切換
+  | 'queued'         // 排隊播放
+  | 'skip';          // 跳過中間動畫
+
+export interface AnimationConfig {
+  enabled: boolean;              // 是否啟用歌詞切換動畫
+  type: AnimationType;           // 動畫類型
+  duration: number;              // 動畫持續時間（毫秒）
+  easing: string;                // 緩動函數
+  rapidSwitchMode: RapidSwitchMode; // 快速切換模式
+}
+
+export const DEFAULT_ANIMATION: AnimationConfig = {
+  enabled: true,
+  type: 'crossfade',
+  duration: 400,
+  easing: 'ease-in-out',
+  rapidSwitchMode: 'immediate',
+};
 
 // 樣式配置
 export interface StyleConfig {
@@ -51,6 +85,8 @@ export interface StyleConfig {
   fadeDuration: number;
   padding: number;
   lineHeight: number;
+  // 新增動畫配置
+  animation: AnimationConfig;
 }
 
 // 預設樣式
@@ -78,6 +114,7 @@ export const DEFAULT_STYLE: StyleConfig = {
   fadeDuration: 500,
   padding: 40,
   lineHeight: 1.5,
+  animation: DEFAULT_ANIMATION,
 };
 
 // Realtime 事件類型
@@ -113,6 +150,7 @@ export const THEME_PRESETS: ThemePreset[] = [
       fadeDuration: 500,
       padding: 40,
       lineHeight: 1.5,
+      animation: DEFAULT_ANIMATION,
     },
     previewColor: '#FCD34D',
   },
@@ -132,6 +170,7 @@ export const THEME_PRESETS: ThemePreset[] = [
       fadeDuration: 500,
       padding: 40,
       lineHeight: 1.5,
+      animation: DEFAULT_ANIMATION,
     },
     previewColor: '#3B82F6',
   },
@@ -151,6 +190,7 @@ export const THEME_PRESETS: ThemePreset[] = [
       fadeDuration: 300,
       padding: 40,
       lineHeight: 1.4,
+      animation: DEFAULT_ANIMATION,
     },
     previewColor: '#FFFFFF',
   },
@@ -170,6 +210,7 @@ export const THEME_PRESETS: ThemePreset[] = [
       fadeDuration: 500,
       padding: 40,
       lineHeight: 1.5,
+      animation: DEFAULT_ANIMATION,
     },
     previewColor: '#FFFF00',
   },
@@ -189,6 +230,7 @@ export const THEME_PRESETS: ThemePreset[] = [
       fadeDuration: 600,
       padding: 40,
       lineHeight: 1.5,
+      animation: DEFAULT_ANIMATION,
     },
     previewColor: '#FBCFE8',
   },
@@ -208,6 +250,7 @@ export const THEME_PRESETS: ThemePreset[] = [
       fadeDuration: 400,
       padding: 40,
       lineHeight: 1.5,
+      animation: DEFAULT_ANIMATION,
     },
     previewColor: '#00FF88',
   },
