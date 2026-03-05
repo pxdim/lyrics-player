@@ -260,13 +260,48 @@ export interface ConnectionInfo {
 
 // ============ 播放列表 ============
 
+export interface LyricLine {
+  text: string;
+  notes?: string;
+}
+
 export interface PlaylistItem {
   id: string;
   sessionId: string;
   songName: string;
   artist?: string;
   orderIndex: number;
-  lyrics: LyricWithChords[];
+  lyrics: LyricLine[];
+  isCurrent?: boolean;
+}
+
+// 新的資料庫對應類型 (配合 Supabase playlists 表)
+export interface Playlist {
+  id: string;
+  session_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaylistSong {
+  id: string;
+  playlist_id: string;
+  song_name: string;
+  artist?: string | null;
+  lyrics: LyricLine[];
+  order_index: number;
+  is_current: boolean;
+  created_at: string;
+}
+
+// 歌單狀態 (用於本地狀態管理)
+export interface PlaylistState {
+  songs: PlaylistSong[];
+  currentSongIndex: number | null;
+  currentLyricIndex: number | null;
+  autoPlay: boolean;
+  isLoading: boolean;
 }
 
 // ============ 颜色类别 ============

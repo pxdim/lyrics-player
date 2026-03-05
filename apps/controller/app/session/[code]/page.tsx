@@ -9,6 +9,7 @@ import StylePanel from '@/components/StylePanel';
 import LyricPreview from '@/components/LyricPreview';
 import AISearchModal from '@/components/AISearchModal';
 import MobileNavigation, { MobileTab } from '@/components/MobileNavigation';
+import { PlaylistSidebar } from '@/components/PlaylistSidebar';
 
 export default function SessionPage() {
   const params = useParams();
@@ -44,6 +45,13 @@ export default function SessionPage() {
   const [showRoomSwitcher, setShowRoomSwitcher] = useState(false);
   const [switchCode, setSwitchCode] = useState('');
   const [isSwitching, setIsSwitching] = useState(false);
+
+  // Playlist states
+  const [playlistSongs, setPlaylistSongs] = useState<any[]>([]);
+  const [currentSongIndex, setCurrentSongIndex] = useState<number | null>(null);
+  const [currentLyricIndex, setCurrentLyricIndex] = useState<number | null>(null);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // UI State
   const [currentThemeId, setCurrentThemeId] = useState('worship-warm');
@@ -362,6 +370,97 @@ export default function SessionPage() {
     }
   };
 
+  // Load playlist
+  useEffect(() => {
+    const loadPlaylist = async () => {
+      if (!session) return;
+
+      try {
+        const response = await fetch(`/api/playlist?sessionId=${session.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setPlaylistSongs(data.songs || []);
+        }
+      } catch (error) {
+        console.error('Error loading playlist:', error);
+      }
+    };
+
+    loadPlaylist();
+  }, [session]);
+
+  // Playlist handlers
+  const handleSelectSong = async (songIndex: number, lyricIndex = 0) => {
+    if (songIndex < 0 || songIndex >= playlistSongs.length || !session) return;
+
+    const song = playlistSongs[songIndex];
+    setCurrentSongIndex(songIndex);
+    setCurrentLyricIndex(lyricIndex);
+
+    // 將歌曲的歌詞載入到 session
+    try {
+      const supabase = createSupabaseClient();
+
+      // 先刪除現有歌詞
+      await supabase.from('lyrics').delete().eq('session_id', session.id);
+
+      // 插入新歌詞
+      const lyricsToInsert = song.lyrics.map((line: any, index: number) => ({
+        id: crypto.randomUUID(),
+        session_id: session.id,
+        text: line.text,
+        notes: line.notes || song.song_name,
+        order_index: index,
+      }));
+
+      const { error } = await supabase.from('lyrics').insert(lyricsToInsert);
+
+      if (error) {
+        console.error('Error loading song lyrics:', error);
+        alert('載入歌詞失敗');
+        return;
+      }
+
+      // 載入歌詞到本地狀態
+      const newLyrics: Lyric[] = lyricsToInsert.map((l: any) => ({
+        id: l.id,
+        session_id: session.id,
+        text: l.text,
+        order_index: l.order_index,
+        notes: l.notes,
+        created_at: new Date().toISOString(),
+      }));
+      setLyrics(newLyrics);
+
+      // 設定顯示第一句
+      broadcastDisplayState({
+        currentIndex: lyricIndex,
+        isVisible: true,
+        opacity: 1,
+        isFadingIn: false,
+        isFadingOut: false,
+      });
+    } catch (error) {
+      console.error('Error in handleSelectSong:', error);
+    }
+  };
+
+  const handleNextSong = () => {
+    if (!playlistSongs.length) return;
+    const nextIndex = currentSongIndex === null ? 0 : currentSongIndex + 1;
+    if (nextIndex < playlistSongs.length) {
+      handleSelectSong(nextIndex);
+    }
+  };
+
+  const handlePreviousSong = () => {
+    if (!playlistSongs.length) return;
+    const prevIndex = currentSongIndex === null ? 0 : currentSongIndex - 1;
+    if (prevIndex >= 0) {
+      handleSelectSong(prevIndex);
+    }
+  };
+
   // AI Search functions
   const handleSearchOptions = async (e?: FormEvent) => {
     if (e) e.preventDefault();
@@ -456,6 +555,33 @@ export default function SessionPage() {
 
       await new Promise(resolve => setTimeout(resolve, 1500));
 
+      // 添加到歌單而不是替換
+      const newSong = {
+        id: crypto.randomUUID(),
+        song_name: songName,
+        artist: artist || null,
+        lyrics: foundLyrics.map((l: { text: string; notes?: string }) => ({
+          text: l.text,
+          notes: l.notes || undefined,
+        })),
+        order_index: playlistSongs.length,
+        is_current: true,
+      };
+
+      setPlaylistSongs([...playlistSongs, newSong]);
+      setCurrentSongIndex(playlistSongs.length);
+      setCurrentLyricIndex(0);
+
+      // 同時更新顯示的歌詞
+      setLyrics(foundLyrics.map((l: { text: string; notes?: string }, index: number) => ({
+        id: crypto.randomUUID(),
+        session_id: session.id,
+        text: l.text,
+        order_index: index,
+        notes: l.notes || songName,
+        created_at: new Date().toISOString(),
+      })));
+
       broadcastDisplayState({
         currentIndex: 0,
         isVisible: true,
@@ -506,8 +632,21 @@ export default function SessionPage() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen" style={{ backgroundColor: '#0A0A0F' }}>
-      {/* Desktop Sidebar */}
+      {/* Playlist Sidebar */}
       <div className="hidden md:block">
+        <PlaylistSidebar
+          sessionId={session?.id || ''}
+          currentSongIndex={currentSongIndex}
+          currentLyricIndex={currentLyricIndex}
+          onSongSelect={(songIndex, lyricIndex = 0) => handleSelectSong(songIndex, lyricIndex)}
+          onNextSong={handleNextSong}
+          onPreviousSong={handlePreviousSong}
+          onAddSong={() => setShowAISearch(true)}
+        />
+      </div>
+
+      {/* Original Sidebar - Hidden for now, can be toggled */}
+      <div className="hidden">
         <Sidebar
           sessionCode={code}
           isConnected={isConnected}
