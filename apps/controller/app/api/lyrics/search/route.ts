@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// Initialize genAI at runtime to support environment variable changes
+const getGenAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not set');
+  }
+  return new GoogleGenerativeAI(apiKey);
+};
 
 interface SearchRequest {
   query: string;
@@ -57,6 +64,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const genAI = getGenAI();
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Mode 1: Search for song options
