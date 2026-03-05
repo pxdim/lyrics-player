@@ -28,6 +28,9 @@ export default function SessionPage() {
     opacity: 1,
     isFadingIn: false,
     isFadingOut: false,
+    isAnimating: false,
+    previousIndex: null,
+    animationTrigger: 0,
   });
   const [styleConfig, setStyleConfig] = useState<StyleConfig>(DEFAULT_STYLE);
   const [isLoading, setIsLoading] = useState(true);
