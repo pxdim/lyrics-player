@@ -185,4 +185,68 @@ describe('PlaylistSidebar Component', () => {
       expect(screen.getByText('自動播放')).toBeTruthy();
     });
   });
+
+  it('should display error message when loading fails', async () => {
+    (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+
+    render(
+      <PlaylistSidebar
+        sessionId={mockSessionId}
+        currentSongIndex={null}
+        currentLyricIndex={null}
+        onSongSelect={mockOnSongSelect}
+        onNextSong={mockOnNextSong}
+        onPreviousSong={mockOnPreviousSong}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Network error')).toBeTruthy();
+    });
+  });
+
+  it('should display retry button when error occurs', async () => {
+    (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+
+    render(
+      <PlaylistSidebar
+        sessionId={mockSessionId}
+        currentSongIndex={null}
+        currentLyricIndex={null}
+        onSongSelect={mockOnSongSelect}
+        onNextSong={mockOnNextSong}
+        onPreviousSong={mockOnPreviousSong}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('重試')).toBeTruthy();
+    });
+  });
+
+  it('should call onAutoPlayChange when clicking auto play toggle', async () => {
+    const mockOnAutoPlayChange = vi.fn();
+
+    render(
+      <PlaylistSidebar
+        sessionId={mockSessionId}
+        currentSongIndex={0}
+        currentLyricIndex={0}
+        onSongSelect={mockOnSongSelect}
+        onNextSong={mockOnNextSong}
+        onPreviousSong={mockOnPreviousSong}
+        autoPlay={false}
+        onAutoPlayChange={mockOnAutoPlayChange}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('自動播放')).toBeTruthy();
+    });
+
+    const autoPlayButton = screen.getByText('自動播放');
+    fireEvent.click(autoPlayButton);
+
+    expect(mockOnAutoPlayChange).toHaveBeenCalledWith(true);
+  });
 });
