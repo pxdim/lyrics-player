@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createSupabaseClient, Lyric, Session, DisplayState, StyleConfig, DEFAULT_STYLE, THEME_PRESETS, useLyricsPlayerShortcuts, formatTime, parseTime, DESIGN_TOKENS } from 'shared';
+import type { SongGroup } from 'shared';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import Sidebar from '@/components/Sidebar';
 import StylePanel from '@/components/StylePanel';
@@ -50,7 +51,7 @@ export default function SessionPage() {
   const [isSwitching, setIsSwitching] = useState(false);
 
   // Playlist states
-  const [playlistSongs, setPlaylistSongs] = useState<any[]>([]);
+  const [playlistSongs, setPlaylistSongs] = useState<SongGroup[]>([]);
   const [currentSongIndex, setCurrentSongIndex] = useState<number | null>(null);
   const [currentLyricIndex, setCurrentLyricIndex] = useState<number | null>(null);
   const [autoPlay, setAutoPlay] = useState(false);
@@ -575,16 +576,16 @@ export default function SessionPage() {
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       // 添加到歌單而不是替換
-      const newSong = {
+      const newSong: SongGroup = {
         id: crypto.randomUUID(),
-        song_name: songName,
+        songName: songName,
         artist: artist || null,
         lyrics: foundLyrics.map((l: { text: string; notes?: string }) => ({
           text: l.text,
           notes: l.notes || undefined,
         })),
-        order_index: playlistSongs.length,
-        is_current: true,
+        orderIndex: playlistSongs.length,
+        isCurrent: true,
       };
 
       setPlaylistSongs([...playlistSongs, newSong]);
