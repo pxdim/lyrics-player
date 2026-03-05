@@ -515,7 +515,7 @@ export default function SessionPage() {
           isVisible: false,
         });
       }
-    } else if (songIndex < currentSongIndex) {
+    } else if (currentSongIndex !== null && songIndex < currentSongIndex) {
       // 如果刪除的歌曲在當前歌曲之前，需要調整索引
       setCurrentSongIndex(currentSongIndex - 1);
     }

@@ -5,3 +5,17 @@ dist/
 .turbo/
 .env*
 .DS_Store
+
+# Test results
+test-results/
+*.last-run.json
+
+# Test screenshots
+*.png
+!public/**/*.png
+
+# Backup files
+*.backup
+
+# Supabase temp files
+supabase/.temp/

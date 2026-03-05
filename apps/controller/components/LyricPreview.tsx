@@ -460,6 +460,52 @@ export default function LyricPreview({
           </button>
         </div>
       </div>
+
+      {/* Control Bar */}
+      <div className="flex items-center gap-3" role="group" aria-label="播放控制">
+        <button
+          onClick={onPrevious}
+          disabled={!hasPrevious}
+          className="w-14 h-14 rounded-xl flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
+          aria-label="上一首"
+        >
+          <svg width={24} height={24} fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M19 20L9 12l10-8v16zM6 5v14" />
+          </svg>
+        </button>
+
+        <button
+          onClick={onPlayPause}
+          className="w-18 h-18 rounded-2xl flex items-center justify-center transition-all"
+          style={{ backgroundColor: DESIGN_TOKENS.colors.accent }}
+          aria-label={isPlaying ? "暫停" : "播放"}
+        >
+          {isPlaying ? (
+            <svg width={32} height={32} fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="4" width="4" height="16" />
+              <rect x="14" y="4" width="4" height="16" />
+            </svg>
+          ) : (
+            <svg width={32} height={32} fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
+        </button>
+
+        <button
+          onClick={onNext}
+          disabled={!hasNext}
+          className="w-14 h-14 rounded-xl flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
+          aria-label="下一首"
+        >
+          <svg width={24} height={24} fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M5 4l10 8v-8l10 8v16L15 12v8L5 12v-8z" />
+          </svg>
+        </button>
+      </div>
+    </div>
     </div>
   );
 }
