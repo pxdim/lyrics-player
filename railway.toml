@@ -1,11 +1,11 @@
 # Railway deployment configuration
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.controller"
 
 [deploy]
-startCommand = "cd apps/controller && npm run start"
 healthcheckPath = "/"
 
 [controller.service]
 name = "lyrics-player-controller"
-source = "apps/controller"
+source = "."

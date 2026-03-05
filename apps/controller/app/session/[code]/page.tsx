@@ -1,18 +1,24 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createSupabaseClient, Lyric, Session, DisplayState, StyleConfig, DEFAULT_STYLE, useLyricsPlayerShortcuts } from 'shared';
+import { createSupabaseClient, Lyric, Session, DisplayState, StyleConfig, DEFAULT_STYLE, THEME_PRESETS, useLyricsPlayerShortcuts, formatTime, parseTime, DESIGN_TOKENS } from 'shared';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import LyricList from '@/components/LyricList';
-import ControlPanel from '@/components/ControlPanel';
-import FontManager from '@/components/FontManager';
+import Sidebar from '@/components/Sidebar';
+import StylePanel from '@/components/StylePanel';
+import LyricPreview from '@/components/LyricPreview';
+import AISearchModal from '@/components/AISearchModal';
+import MobileNavigation, { MobileTab } from '@/components/MobileNavigation';
 
 export default function SessionPage() {
   const params = useParams();
   const router = useRouter();
   const code = params.code as string;
 
+  // Mobile state
+  const [mobileTab, setMobileTab] = useState<MobileTab>('lyrics');
+
+  // State
   const [session, setSession] = useState<Session | null>(null);
   const [lyrics, setLyrics] = useState<Lyric[]>([]);
   const [displayState, setDisplayState] = useState<DisplayState>({
@@ -25,29 +31,76 @@ export default function SessionPage() {
   const [styleConfig, setStyleConfig] = useState<StyleConfig>(DEFAULT_STYLE);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [deviceCount, setDeviceCount] = useState(0);
   const [supabase] = useState(() => createSupabaseClient());
 
-  // New lyric form state
-  const [newLyricText, setNewLyricText] = useState('');
-  const [newLyricNotes, setNewLyricNotes] = useState('');
-  const [isAddingLyric, setIsAddingLyric] = useState(false);
-
-  // Edit lyric state
-  const [editingLyric, setEditingLyric] = useState<Lyric | null>(null);
-  const [editText, setEditText] = useState('');
-  const [editNotes, setEditNotes] = useState('');
-
-  // Lyrics search state
-  const [showSearchModal, setShowSearchModal] = useState(false);
-  const [searchSongName, setSearchSongName] = useState('');
-  const [searchArtist, setSearchArtist] = useState('');
+  // Search states
+  const [showAISearch, setShowAISearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<{ songName: string; artist: string }[]>([]);
 
-  // Fetch initial data
+  // UI State
+  const [currentThemeId, setCurrentThemeId] = useState('worship-warm');
+  const [displayMode, setDisplayMode] = useState<'audience' | 'stage'>('stage');
+  const [showChords, setShowChords] = useState(true);
+  const [transpose, setTranspose] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Timer state
+  const [timerDuration, setTimerDuration] = useState(300); // 5 minutes default
+  const [timerRemaining, setTimerRemaining] = useState(300);
+  const [timerIsRunning, setTimerIsRunning] = useState(false);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Timer effect
   useEffect(() => {
-    const fetchSessionData = async () => {
+    if (timerIsRunning && timerRemaining > 0) {
+      timerIntervalRef.current = setInterval(() => {
+        setTimerRemaining((prev) => {
+          if (prev <= 1) {
+            setTimerIsRunning(false);
+            // Timer finished - play sound or show alert
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [timerIsRunning, timerRemaining]);
+
+  // Broadcast timer state
+  useEffect(() => {
+    if (session) {
+      supabase.channel(`session:${session.id}`).send({
+        type: 'broadcast',
+        event: 'timer_state',
+        payload: {
+          duration: timerDuration,
+          remaining: timerRemaining,
+          isRunning: timerIsRunning,
+        },
+      });
+    }
+  }, [timerDuration, timerRemaining, timerIsRunning, session]);
+
+  const timerDisplay = formatTime(timerRemaining);
+
+  // Load session and lyrics
+  useEffect(() => {
+    const loadData = async () => {
       try {
-        // Validate session
         const sessionResponse = await fetch(`/api/session/validate?code=${code}`);
         if (!sessionResponse.ok) {
           router.push('/');
@@ -57,7 +110,6 @@ export default function SessionPage() {
         const sessionData = await sessionResponse.json();
         setSession(sessionData.session);
 
-        // Fetch lyrics
         const { data: lyricsData } = await supabase
           .from('lyrics')
           .select('*')
@@ -67,18 +119,18 @@ export default function SessionPage() {
         if (lyricsData) {
           setLyrics(lyricsData);
         }
-
-        setIsLoading(false);
       } catch (error) {
-        console.error('Error fetching session data:', error);
+        console.error('Error loading session:', error);
         router.push('/');
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchSessionData();
-  }, [code, router, supabase]);
+    loadData();
+  }, [code, supabase, router]);
 
-  // Setup Realtime subscription
+  // Setup realtime subscription
   useEffect(() => {
     if (!session) return;
 
@@ -114,7 +166,6 @@ export default function SessionPage() {
             filter: `session_id=eq.${session.id}`,
           },
           async () => {
-            // Refresh lyrics on any change
             const { data } = await supabase
               .from('lyrics')
               .select('*')
@@ -128,6 +179,9 @@ export default function SessionPage() {
         )
         .subscribe((status) => {
           setIsConnected(status === 'SUBSCRIBED');
+          if (status === 'SUBSCRIBED') {
+            setDeviceCount((prev) => prev + 1);
+          }
         });
     };
 
@@ -141,63 +195,67 @@ export default function SessionPage() {
   }, [session, supabase]);
 
   // Broadcast display state changes
-  const broadcastDisplayState = (newState: DisplayState) => {
-    setDisplayState(newState);
-    if (session && isConnected) {
+  const broadcastDisplayState = (newState: Partial<DisplayState>) => {
+    const updated = { ...displayState, ...newState };
+    setDisplayState(updated);
+    if (session) {
       supabase.channel(`session:${session.id}`).send({
         type: 'broadcast',
         event: 'display_state',
-        payload: newState,
+        payload: updated,
       });
     }
   };
 
   // Broadcast style changes
-  const broadcastStyle = (newStyle: StyleConfig) => {
-    setStyleConfig(newStyle);
-    if (session && isConnected) {
+  const broadcastStyle = (newStyle: Partial<StyleConfig>) => {
+    const updated = { ...styleConfig, ...newStyle };
+    setStyleConfig(updated);
+    if (session) {
       supabase.channel(`session:${session.id}`).send({
         type: 'broadcast',
         event: 'style',
-        payload: newStyle,
+        payload: updated,
       });
     }
   };
 
-  // Control handlers
+  const handleSelectLyric = (index: number) => {
+    broadcastDisplayState({ currentIndex: index, isVisible: true });
+  };
+
+  const handleStyleChange = (updates: Partial<StyleConfig>) => {
+    broadcastStyle(updates);
+  };
+
+  const handleThemeSelect = (themeId: string) => {
+    const theme = THEME_PRESETS.find((t) => t.id === themeId);
+    if (theme) {
+      setCurrentThemeId(themeId);
+      broadcastStyle(theme.style);
+    }
+  };
+
   const handlePrevious = () => {
     if (displayState.currentIndex !== null && displayState.currentIndex > 0) {
-      broadcastDisplayState({
-        ...displayState,
-        currentIndex: displayState.currentIndex - 1,
-      });
+      broadcastDisplayState({ currentIndex: displayState.currentIndex - 1 });
     }
   };
 
   const handleNext = () => {
     if (displayState.currentIndex === null && lyrics.length > 0) {
-      broadcastDisplayState({
-        ...displayState,
-        currentIndex: 0,
-      });
+      broadcastDisplayState({ currentIndex: 0 });
     } else if (displayState.currentIndex !== null && displayState.currentIndex < lyrics.length - 1) {
-      broadcastDisplayState({
-        ...displayState,
-        currentIndex: displayState.currentIndex + 1,
-      });
+      broadcastDisplayState({ currentIndex: displayState.currentIndex + 1 });
     }
   };
 
   const handleToggleVisibility = () => {
-    broadcastDisplayState({
-      ...displayState,
-      isVisible: !displayState.isVisible,
-    });
+    broadcastDisplayState({ isVisible: !displayState.isVisible });
   };
 
   const handleFadeIn = () => {
     broadcastDisplayState({
-      ...displayState,
       isFadingIn: true,
       isFadingOut: false,
       isVisible: true,
@@ -207,7 +265,6 @@ export default function SessionPage() {
 
   const handleFadeOut = () => {
     broadcastDisplayState({
-      ...displayState,
       isFadingOut: true,
       isFadingIn: false,
       opacity: 0,
@@ -224,120 +281,117 @@ export default function SessionPage() {
     });
   };
 
-  // Lyric CRUD operations
-  const handleAddLyric = async (e: FormEvent) => {
-    e.preventDefault();
+  // Broadcast chord settings
+  const broadcastChordSettings = (settings: { showChords?: boolean; transpose?: number }) => {
+    if (session) {
+      supabase.channel(`session:${session.id}`).send({
+        type: 'broadcast',
+        event: 'chord_settings',
+        payload: settings,
+      });
+    }
+  };
 
-    if (!newLyricText.trim() || !session) return;
+  const handleToggleChords = () => {
+    const newShowChords = !showChords;
+    setShowChords(newShowChords);
+    broadcastChordSettings({ showChords: newShowChords, transpose });
+  };
 
-    setIsAddingLyric(true);
+  const handleTransposeChange = (newTranspose: number) => {
+    setTranspose(newTranspose);
+    broadcastChordSettings({ showChords, transpose: newTranspose });
+  };
+
+  // Timer handlers
+  const handleTimerToggle = () => {
+    if (timerRemaining === 0) {
+      setTimerRemaining(timerDuration);
+    }
+    setTimerIsRunning(!timerIsRunning);
+  };
+
+  const handleTimerReset = () => {
+    setTimerIsRunning(false);
+    setTimerRemaining(timerDuration);
+  };
+
+  const handleTimerDurationChange = (minutes: number) => {
+    const newDuration = minutes * 60;
+    setTimerDuration(newDuration);
+    if (!timerIsRunning) {
+      setTimerRemaining(newDuration);
+    }
+  };
+
+  // AI Search functions
+  const handleSearchOptions = async (e?: FormEvent) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim() || !session) return;
+
+    setIsSearching(true);
+    setSearchResults([]);
 
     try {
-      const { error } = await supabase.from('lyrics').insert({
-        id: crypto.randomUUID(),
-        session_id: session.id,
-        text: newLyricText.trim(),
-        notes: newLyricNotes.trim() || null,
-        order_index: lyrics.length,
+      const response = await fetch('/api/lyrics/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: searchQuery.trim(),
+          mode: 'search',
+        }),
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
 
-      setNewLyricText('');
-      setNewLyricNotes('');
+      const { options } = await response.json();
+      setSearchResults(options || []);
     } catch (error) {
-      console.error('Error adding lyric:', error);
-      alert('新增歌詞失敗');
+      console.error('Error searching:', error);
+      alert('搜尋失敗，請再試一次');
     } finally {
-      setIsAddingLyric(false);
+      setIsSearching(false);
     }
   };
 
-  const handleEditLyric = async (e: FormEvent) => {
-    e.preventDefault();
-
-    if (!editingLyric) return;
-
-    try {
-      const { error } = await supabase
-        .from('lyrics')
-        .update({
-          text: editText.trim(),
-          notes: editNotes.trim() || null,
-        })
-        .eq('id', editingLyric.id);
-
-      if (error) throw error;
-
-      setEditingLyric(null);
-      setEditText('');
-      setEditNotes('');
-    } catch (error) {
-      console.error('Error updating lyric:', error);
-      alert('更新歌詞失敗');
-    }
-  };
-
-  const handleDeleteLyric = async (id: string) => {
-    if (!confirm('確定要刪除這首詞嗎？')) return;
-
-    try {
-      const { error } = await supabase.from('lyrics').delete().eq('id', id);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting lyric:', error);
-      alert('刪除歌詞失敗');
-    }
-  };
-
-  const handleEditClick = (lyric: Lyric) => {
-    setEditingLyric(lyric);
-    setEditText(lyric.text);
-    setEditNotes(lyric.notes || '');
-  };
-
-  // Handle click on lyric to select it
-  const handleLyricClick = (index: number) => {
-    broadcastDisplayState({
-      ...displayState,
-      currentIndex: index,
-    });
-  };
-
-  // Handle lyrics search
-  const handleSearchLyrics = async (e: FormEvent) => {
-    e.preventDefault();
-
-    if (!searchSongName.trim() || !searchArtist.trim() || !session) return;
+  const handleImportLyrics = async (songName: string, artist: string) => {
+    if (!session) return;
 
     setIsSearching(true);
 
     try {
       const response = await fetch('/api/lyrics/search', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          songName: searchSongName.trim(),
-          artist: searchArtist.trim(),
+          mode: 'lyrics',
+          songName,
+          artist,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Search failed');
+        throw new Error(errorData.error || 'Failed to fetch lyrics');
       }
 
       const { lyrics: foundLyrics } = await response.json();
 
       if (!foundLyrics || foundLyrics.length === 0) {
         alert('未找到歌詞，請嘗試其他歌曲');
+        setIsSearching(false);
         return;
       }
 
-      // Import found lyrics - delete existing and insert new ones
+      // Backup existing lyrics before delete in case insert fails
+      const { data: existingLyrics } = await supabase
+        .from('lyrics')
+        .select('*')
+        .eq('session_id', session.id);
+
+      // Delete existing and insert new
       const { error: deleteError } = await supabase
         .from('lyrics')
         .delete()
@@ -345,7 +399,6 @@ export default function SessionPage() {
 
       if (deleteError) throw deleteError;
 
-      // Insert all found lyrics
       const lyricsToInsert = foundLyrics.map((lyric: { text: string; notes?: string }) => ({
         id: crypto.randomUUID(),
         session_id: session.id,
@@ -354,27 +407,39 @@ export default function SessionPage() {
         order_index: foundLyrics.indexOf(lyric),
       }));
 
-      const { error: insertError } = await supabase
-        .from('lyrics')
-        .insert(lyricsToInsert);
+      const { error: insertError } = await supabase.from('lyrics').insert(lyricsToInsert);
+      if (insertError) {
+        // Restore from backup if insert fails
+        if (existingLyrics && existingLyrics.length > 0) {
+          await supabase.from('lyrics').insert(existingLyrics);
+        }
+        throw insertError;
+      }
 
-      if (insertError) throw insertError;
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // Close modal and reset form
-      setShowSearchModal(false);
-      setSearchSongName('');
-      setSearchArtist('');
+      broadcastDisplayState({
+        currentIndex: 0,
+        isVisible: true,
+        opacity: 1,
+        isFadingIn: false,
+        isFadingOut: false,
+      });
 
-      alert(`成功匯入 ${foundLyrics.length} 行歌詞`);
+      setShowAISearch(false);
+      setSearchQuery('');
+      setSearchResults([]);
+
+      alert(`成功匯入「${songName}」- ${foundLyrics.length} 行歌詞`);
     } catch (error) {
-      console.error('Error searching lyrics:', error);
-      alert(error instanceof Error ? error.message : '搜尋歌詞失敗');
+      console.error('Error importing lyrics:', error);
+      alert(error instanceof Error ? error.message : '匯入歌詞失敗');
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Setup keyboard shortcuts
+  // Keyboard shortcuts
   useLyricsPlayerShortcuts(
     {
       onPrevious: handlePrevious,
@@ -385,7 +450,7 @@ export default function SessionPage() {
       onEmergencyClear: handleEmergencyClear,
       onJumpToLyric: (index) => {
         if (index >= 0 && index < lyrics.length) {
-          handleLyricClick(index);
+          handleSelectLyric(index);
         }
       },
     },
@@ -395,327 +460,136 @@ export default function SessionPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-          <p className="mt-4 text-gray-600">載入中...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: '#0A0A0F' }}>
+        <div className="text-white">載入中...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">歌詞播放器控制器</h1>
-            <p className="text-sm text-gray-500">Session 代碼: {code}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 text-sm ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-600' : 'bg-red-600'}`} />
-              {isConnected ? '已連線' : '連線中...'}
-            </div>
-            <button
-              onClick={() => setShowSearchModal(true)}
-              className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              搜尋歌詞
-            </button>
-            <button
-              onClick={() => router.push('/')}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all"
-            >
-              返回首頁
-            </button>
-          </div>
+    <div className="flex flex-col md:flex-row h-screen" style={{ backgroundColor: '#0A0A0F' }}>
+      {/* Desktop Sidebar */}
+      <div className="hidden md:block">
+        <Sidebar
+          sessionCode={code}
+          isConnected={isConnected}
+          deviceCount={deviceCount}
+          lyrics={lyrics}
+          currentIndex={displayState.currentIndex}
+          onShowAISearch={() => setShowAISearch(true)}
+          onAddSong={() => setShowAISearch(true)}
+          onSelectLyric={handleSelectLyric}
+        />
+      </div>
+
+      {/* Mobile Navigation */}
+      <MobileNavigation currentTab={mobileTab} onTabChange={setMobileTab} />
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden pb-16 md:pb-0">
+        {/* Mobile: Show content based on tab */}
+        <div className={`${mobileTab === 'lyrics' ? 'flex' : 'hidden'} md:flex flex-1`}>
+          <LyricPreview
+            lyrics={lyrics}
+            currentIndex={displayState.currentIndex}
+            displayMode={displayMode}
+            onDisplayModeChange={setDisplayMode}
+            showChords={showChords}
+            onToggleChords={handleToggleChords}
+            transpose={transpose}
+            timerDisplay={timerDisplay}
+            timerIsRunning={timerIsRunning}
+            timerRemaining={timerRemaining}
+            onTimerToggle={handleTimerToggle}
+            onTimerReset={handleTimerReset}
+            onTimerDurationChange={handleTimerDurationChange}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            onPlayPause={() => setIsPlaying(!isPlaying)}
+            isPlaying={isPlaying}
+          />
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column: Lyric List */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">歌詞列表</h2>
-
-              {/* Add Lyric Form */}
-              <form onSubmit={handleAddLyric} className="mb-6 space-y-3">
-                <input
-                  type="text"
-                  value={newLyricText}
-                  onChange={(e) => setNewLyricText(e.target.value)}
-                  placeholder="輸入歌詞文字..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                />
-                <input
-                  type="text"
-                  value={newLyricNotes}
-                  onChange={(e) => setNewLyricNotes(e.target.value)}
-                  placeholder="備註（選填）..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                />
+        {/* Mobile Playlist Tab */}
+        <div className={`${mobileTab === 'playlist' ? 'flex' : 'hidden'} md:hidden flex-1 overflow-y-auto p-4`}>
+          <div className="space-y-2">
+            {lyrics.map((lyric, index) => {
+              const isActive = displayState.currentIndex === index;
+              return (
                 <button
-                  type="submit"
-                  disabled={isAddingLyric || !newLyricText.trim()}
-                  className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  key={lyric.id}
+                  onClick={() => {
+                    handleSelectLyric(index);
+                    setMobileTab('lyrics');
+                  }}
+                  className="flex items-center gap-3 w-full p-3 rounded-lg transition-all"
+                  style={{
+                    backgroundColor: isActive ? DESIGN_TOKENS.colors.accent : DESIGN_TOKENS.colors.panel,
+                  }}
                 >
-                  {isAddingLyric ? '新增中...' : '新增歌詞'}
-                </button>
-              </form>
-
-              {/* Lyric List */}
-              <LyricList
-                lyrics={lyrics}
-                currentIndex={displayState.currentIndex}
-                onEdit={handleEditClick}
-                onDelete={handleDeleteLyric}
-              />
-            </div>
-
-            {/* Style Config */}
-            <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">樣式設定</h2>
-
-              <div className="space-y-4">
-                {/* Font Manager */}
-                <FontManager
-                  selectedFont={styleConfig.fontFamily}
-                  onFontChange={(fontUrl, fontName) =>
-                    broadcastStyle({
-                      ...styleConfig,
-                      fontFamily: fontUrl,
-                    })
-                  }
-                />
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    字型大小
-                  </label>
-                  <input
-                    type="range"
-                    min="24"
-                    max="96"
-                    value={styleConfig.fontSize}
-                    onChange={(e) =>
-                      broadcastStyle({
-                        ...styleConfig,
-                        fontSize: parseInt(e.target.value),
-                      })
-                    }
-                    className="w-full"
-                  />
-                  <span className="text-sm text-gray-500">{styleConfig.fontSize}px</span>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    文字顏色
-                  </label>
-                  <input
-                    type="color"
-                    value={styleConfig.color}
-                    onChange={(e) =>
-                      broadcastStyle({
-                        ...styleConfig,
-                        color: e.target.value,
-                      })
-                    }
-                    className="w-full h-10 rounded cursor-pointer"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    文字對齊
-                  </label>
-                  <div className="flex gap-2">
-                    {(['left', 'center', 'right'] as const).map((align) => (
-                      <button
-                        key={align}
-                        onClick={() =>
-                          broadcastStyle({
-                            ...styleConfig,
-                            textAlign: align,
-                          })
-                        }
-                        className={`flex-1 py-2 rounded-lg font-medium transition-all ${
-                          styleConfig.textAlign === align
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {align === 'left' ? '靠左' : align === 'center' ? '置中' : '靠右'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    背景類型
-                  </label>
-                  <select
-                    value={styleConfig.background.type}
-                    onChange={(e) =>
-                      broadcastStyle({
-                        ...styleConfig,
-                        background: {
-                          ...styleConfig.background,
-                          type: e.target.value as any,
-                        },
-                      })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                  <span
+                    style={{
+                      fontSize: DESIGN_TOKENS.fontSize.md,
+                      fontWeight: DESIGN_TOKENS.fontWeight.semibold,
+                      color: isActive ? DESIGN_TOKENS.colors.text.primary : DESIGN_TOKENS.colors.text.tertiary,
+                      opacity: isActive ? 1 : 0.5,
+                      minWidth: '30px',
+                    }}
                   >
-                    <option value="transparent">透明</option>
-                    <option value="solid">純色</option>
-                    <option value="gradient">漸層</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Control Panel */}
-          <div className="lg:sticky lg:top-8 lg:self-start">
-            <ControlPanel
-              lyrics={lyrics}
-              currentIndex={displayState.currentIndex}
-              isVisible={displayState.isVisible}
-              onPrevious={handlePrevious}
-              onNext={handleNext}
-              onToggleVisibility={handleToggleVisibility}
-              onFadeIn={handleFadeIn}
-              onFadeOut={handleFadeOut}
-              onEmergencyClear={handleEmergencyClear}
-            />
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <p
+                    style={{
+                      fontSize: DESIGN_TOKENS.fontSize.sm,
+                      fontWeight: DESIGN_TOKENS.fontWeight.medium,
+                      color: isActive ? DESIGN_TOKENS.colors.text.primary : DESIGN_TOKENS.colors.text.secondary,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {lyric.text}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
-      </main>
 
-      {/* Edit Modal */}
-      {editingLyric && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">編輯歌詞</h3>
-
-            <form onSubmit={handleEditLyric} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  歌詞文字
-                </label>
-                <input
-                  type="text"
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  備註
-                </label>
-                <input
-                  type="text"
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-all"
-                >
-                  儲存
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingLyric(null);
-                    setEditText('');
-                    setEditNotes('');
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-all"
-                >
-                  取消
-                </button>
-              </div>
-            </form>
-          </div>
+        {/* Style Panel - Desktop always visible, Mobile only on style tab */}
+        <div className={`${mobileTab === 'style' ? 'flex' : 'hidden'} md:flex`}>
+          <StylePanel
+            style={styleConfig}
+            currentThemeId={currentThemeId}
+            onStyleChange={handleStyleChange}
+            onThemeSelect={handleThemeSelect}
+            isEditing={false}
+            onToggleEdit={() => {}}
+            transpose={transpose}
+            onTransposeChange={handleTransposeChange}
+            showChords={showChords}
+            onToggleChords={handleToggleChords}
+          />
         </div>
-      )}
+      </div>
 
-      {/* Search Lyrics Modal */}
-      {showSearchModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">搜尋歌詞</h3>
-            <p className="text-sm text-gray-500 mb-4">使用 AI 搜尋並匯入歌詞</p>
-
-            <form onSubmit={handleSearchLyrics} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  歌曲名稱
-                </label>
-                <input
-                  type="text"
-                  value={searchSongName}
-                  onChange={(e) => setSearchSongName(e.target.value)}
-                  placeholder="例如：稻香"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  歌手
-                </label>
-                <input
-                  type="text"
-                  value={searchArtist}
-                  onChange={(e) => setSearchArtist(e.target.value)}
-                  placeholder="例如：周杰倫"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={isSearching || !searchSongName.trim() || !searchArtist.trim()}
-                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  {isSearching ? '搜尋中...' : '搜尋並匯入'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSearchModal(false);
-                    setSearchSongName('');
-                    setSearchArtist('');
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-all"
-                  disabled={isSearching}
-                >
-                  取消
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* AI Search Modal */}
+      <AISearchModal
+        isOpen={showAISearch}
+        onClose={() => {
+          setShowAISearch(false);
+          setSearchQuery('');
+          setSearchResults([]);
+        }}
+        onAddSong={(song) => {
+          handleImportLyrics(song.songName, song.artist);
+        }}
+        searchQuery={searchQuery}
+        searchResults={searchResults}
+        isSearching={isSearching}
+        onSearchChange={setSearchQuery}
+        onSearch={handleSearchOptions}
+      />
     </div>
   );
 }

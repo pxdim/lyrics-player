@@ -1,40 +1,36 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createSupabaseClient, generateSessionCode } from 'shared';
+
+function generateSessionCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
 
 export function CodeDisplay() {
-  const [code, setCode] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [code] = useState(() => generateSessionCode());
+  const [registered, setRegistered] = useState(false);
 
   useEffect(() => {
-    // 生成新 session
-    const initSession = async () => {
-      const newCode = generateSessionCode();
-      setCode(newCode);
-
-      const supabase = createSupabaseClient();
-      try {
-        await supabase.from('sessions').insert({
-          id: crypto.randomUUID(),
-          code: newCode,
-        });
-      } catch (error) {
-        console.error('Failed to create session:', error);
-      }
-      setLoading(false);
-    };
-
-    initSession();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="text-white text-2xl">載入中...</div>
-      </div>
-    );
-  }
+    // Register this session in the database
+    fetch('/api/session/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log('Session registered:', data);
+        setRegistered(true);
+      })
+      .catch(err => {
+        console.error('Failed to register session:', err);
+      });
+  }, [code]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-8">
@@ -47,7 +43,10 @@ export function CodeDisplay() {
         </div>
       </div>
 
-      <p className="mt-8 text-gray-400">等待連接...</p>
+      <p className="mt-8 text-gray-400">
+        {registered ? '等待連接...' : '正在註冊...'}
+      </p>
+      <p className="mt-2 text-gray-500 text-sm">Session ID: {code}</p>
     </div>
   );
 }

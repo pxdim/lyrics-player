@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 export default function HomePage() {
   const router = useRouter();
   const [code, setCode] = useState('');
+  const [displayCode, setDisplayCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -34,6 +35,20 @@ export default function HomePage() {
     }
   };
 
+  const handleCodeChange = (value: string) => {
+    // First remove existing dashes and non-alphanumeric chars
+    let cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const truncated = cleaned.slice(0, 6);
+    setCode(truncated);
+
+    // Display with dash for better UX (XXX-XXX format)
+    if (truncated.length >= 3) {
+      setDisplayCode(truncated.slice(0, 3) + '-' + truncated.slice(3));
+    } else {
+      setDisplayCode(truncated);
+    }
+  };
+
   const handleCreateSession = async () => {
     setIsLoading(true);
     setError('');
@@ -54,33 +69,50 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 p-4">
-      <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
+    <div className="min-h-screen flex items-center justify-center bg-black p-4">
+      {/* Subtle noise texture */}
+      <div className="fixed inset-0 opacity-[0.02] pointer-events-none" style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+      }}></div>
+
+      {/* Subtle ambient glow */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-white/3 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-white/2 rounded-full blur-3xl"></div>
+      </div>
+
+      <div className="relative z-10 bg-zinc-900/80 backdrop-blur-xl rounded-2xl border border-white/10 p-8 w-full max-w-md shadow-2xl">
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <div className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-white/10">
+            <svg className="w-7 h-7 text-black" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4V7h4V3h-6z"/>
+            </svg>
+          </div>
+        </div>
+
+        <h1 className="text-2xl font-semibold text-center mb-8 text-white tracking-tight">
           歌詞播放器控制器
         </h1>
 
         <form onSubmit={handleConnect} className="space-y-6">
           <div>
-            <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="code" className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wide">
               輸入 Session 代碼
             </label>
             <input
               id="code"
               type="text"
-              value={code}
-              onChange={(e) => {
-                const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                setCode(value.slice(0, 6));
-              }}
-              className="w-full px-4 py-3 text-2xl text-center tracking-widest border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all"
-              placeholder="ABC123"
-              maxLength={6}
+              value={displayCode}
+              onChange={(e) => handleCodeChange(e.target.value)}
+              className="w-full px-4 py-4 text-2xl text-center tracking-widest bg-white/[0.03] border border-white/10 rounded-xl focus:border-white/30 focus:ring-1 focus:ring-white/20 outline-none transition-all placeholder:text-white/10 text-white"
+              placeholder="ABC-123"
+              maxLength={7}
             />
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-lg text-sm text-center">
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm text-center">
               {error}
             </div>
           )}
@@ -88,7 +120,7 @@ export default function HomePage() {
           <button
             type="submit"
             disabled={isLoading || code.length !== 6}
-            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg"
+            className="w-full bg-white text-black py-3.5 rounded-xl font-medium hover:bg-white/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg shadow-white/10"
           >
             {isLoading ? '連線中...' : '連線'}
           </button>
@@ -97,17 +129,17 @@ export default function HomePage() {
         <div className="mt-8">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
+              <div className="w-full border-t border-white/10" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">或</span>
+              <span className="px-3 bg-zinc-900/80 text-white/30">或</span>
             </div>
           </div>
 
           <button
             onClick={handleCreateSession}
             disabled={isLoading}
-            className="mt-6 w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-medium hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all border-2 border-gray-300"
+            className="mt-6 w-full bg-white/5 text-white py-3.5 rounded-xl font-medium hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-white/10"
           >
             建立新的 Session
           </button>

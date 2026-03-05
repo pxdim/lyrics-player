@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Display App Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        #log { margin-top: 20px; padding: 10px; background: #2a2a2a; border-radius: 8px; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .info { color: #60a5fa; }
+        iframe { width: 100%; height: 500px; border: 1px solid #444; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Display App Test</h1>
+    <p>Testing <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></p>
+    <iframe id="testFrame" src="http://localhost:3000"></iframe>
+    <div id="log"></div>
+
+    <script>
+        const log = document.getElementById('log');
+        const frame = document.getElementById('testFrame');
+
+        function addLog(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            log.appendChild(div);
+        }
+
+        frame.onload = function() {
+            addLog('Frame loaded', 'info');
+
+            try {
+                // Try to access the iframe content
+                const frameDoc = frame.contentDocument || frame.contentWindow.document;
+                const frameBody = frameDoc.body;
+
+                // Check initial state
+                setTimeout(() => {
+                    const bodyText = frameBody.textContent || '';
+                    addLog(`Body text preview: ${bodyText.substring(0, 200)}...`, 'info');
+
+                    if (bodyText.includes('載入中')) {
+                        addLog('Still showing loading state after 1s', 'error');
+                    } else {
+                        addLog('Loading state cleared!', 'success');
+                    }
+
+                    if (bodyText.includes('Session ID:')) {
+                        addLog('Session code found!', 'success');
+                        const match = bodyText.match(/Session ID: ([A-Z0-9]{6})/);
+                        if (match) {
+                            addLog(`Session code: ${match[1]}`, 'success');
+                        }
+                    } else {
+                        addLog('Session code not found', 'error');
+                    }
+
+                    // Check for any error messages
+                    if (bodyText.includes('Error') || bodyText.includes('error')) {
+                        addLog('Error message detected in page', 'error');
+                    }
+                }, 2000);
+
+                // Also check after 5 seconds
+                setTimeout(() => {
+                    const frameBody2 = (frame.contentDocument || frame.contentWindow.document).body;
+                    const bodyText2 = frameBody2.textContent || '';
+
+                    if (bodyText2.includes('載入中')) {
+                        addLog('STILL loading after 5s - something is wrong', 'error');
+                    } else if (bodyText2.includes('歌詞顯示端')) {
+                        addLog('Page fully loaded with session code!', 'success');
+                    }
+                }, 5000);
+
+            } catch (e) {
+                addLog(`Cannot access iframe (CORS?): ${e.message}`, 'error');
+            }
+        };
+
+        frame.onerror = function() {
+            addLog('Frame failed to load', 'error');
+        };
+    </script>
+</body>
+</html>
