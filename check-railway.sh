@@ -26,7 +26,7 @@ railway status 2>&1 | head -5
 echo ""
 echo "📋 下一步操作:"
 echo "1. 打開以下連結添加服務:"
-echo "   https://railway.com/project/c51aa48c-5509-4a56-a273-78c6495f8386/new"
+echo "   https://railway.com/project/f3497a33-73e6-4a4b-bf8a-160ecf113384/new"
 echo ""
 echo "2. 選擇 \"Deploy from GitHub repo\""
 echo "3. 選擇 pxdim/lyrics-player"
