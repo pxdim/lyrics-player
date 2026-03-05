@@ -27,24 +27,29 @@ export function PlaylistSidebar({
   const [songs, setSongs] = useState<SongGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [autoPlay, setAutoPlay] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // 載入歌單
-  useEffect(() => {
-    const loadPlaylist = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/playlist?sessionId=${sessionId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setSongs(data.songs || []);
-        }
-      } catch (error) {
-        console.error('Error loading playlist:', error);
-      } finally {
-        setIsLoading(false);
+  const loadPlaylist = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/playlist?sessionId=${sessionId}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '載入失敗' }));
+        throw new Error(errorData.error || '載入歌單失敗');
       }
-    };
+      const data = await response.json();
+      setSongs(data.songs || []);
+    } catch (err) {
+      console.error('Error loading playlist:', err);
+      setError(err instanceof Error ? err.message : '載入歌單失敗');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     if (sessionId) {
       loadPlaylist();
     }
@@ -133,6 +138,24 @@ export function PlaylistSidebar({
             }}
           >
             載入中...
+          </div>
+        ) : error ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+            <p style={{ color: '#EF4444', marginBottom: '16px', fontSize: '14px' }}>{error}</p>
+            <button
+              onClick={loadPlaylist}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                backgroundColor: '#C9A962',
+                color: '#0A0A0A',
+                fontSize: '14px',
+                cursor: 'pointer',
+                border: 'none',
+              }}
+            >
+              重試
+            </button>
           </div>
         ) : songs.length === 0 ? (
           <div
