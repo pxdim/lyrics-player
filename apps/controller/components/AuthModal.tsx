@@ -1,6 +1,7 @@
 'use client';
 
-import { X, LogIn, BookOpen, Star, Settings } from 'lucide-react';
+import { useState } from 'react';
+import { X, LogIn, BookOpen, Star, Settings, Mail, Lock, User } from 'lucide-react';
 import { DESIGN_TOKENS } from 'shared';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -10,18 +11,47 @@ interface AuthModalProps {
   feature?: string;
 }
 
+type AuthMode = 'login' | 'signup';
+
 export function AuthModal({ isOpen, onClose, feature }: AuthModalProps) {
-  const { signIn, loading } = useAuth();
+  const { signIn, signInWithEmail, signUpWithEmail, loading, error } = useAuth();
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSignIn = async () => {
+  const handleGoogleSignIn = async () => {
     try {
       await signIn();
       onClose();
     } catch (err) {
       console.error('Sign in error:', err);
     }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!email || !password) {
+      return;
+    }
+
+    try {
+      if (mode === 'login') {
+        await signInWithEmail(email, password);
+      } else {
+        await signUpWithEmail(email, password, name);
+      }
+      onClose();
+    } catch (err) {
+      console.error('Auth error:', err);
+    }
+  };
+
+  const toggleMode = () => {
+    setMode(mode === 'login' ? 'signup' : 'login');
   };
 
   return (
@@ -31,7 +61,7 @@ export function AuthModal({ isOpen, onClose, feature }: AuthModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-[400px] rounded-3xl overflow-hidden"
+        className="w-[420px] rounded-3xl overflow-hidden"
         style={{ backgroundColor: DESIGN_TOKENS.colors.panel }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -44,7 +74,7 @@ export function AuthModal({ isOpen, onClose, feature }: AuthModalProps) {
               color: DESIGN_TOKENS.colors.text.primary,
             }}
           >
-            登入以使用此功能
+            {mode === 'login' ? '登入' : '註冊帳號'}
           </h2>
           <button onClick={onClose}>
             <X size={20} color={DESIGN_TOKENS.colors.text.tertiary} />
@@ -56,7 +86,7 @@ export function AuthModal({ isOpen, onClose, feature }: AuthModalProps) {
 
         {/* Content */}
         <div className="p-6">
-          {feature && (
+          {feature && mode === 'login' && (
             <div
               className="mb-6 p-4 rounded-xl"
               style={{ backgroundColor: 'rgba(201, 169, 98, 0.1)' }}
@@ -72,77 +102,227 @@ export function AuthModal({ isOpen, onClose, feature }: AuthModalProps) {
             </div>
           )}
 
-          <p
-            style={{
-              fontSize: DESIGN_TOKENS.fontSize.md,
-              color: DESIGN_TOKENS.colors.text.secondary,
-              marginBottom: '20px',
-            }}
-          >
-            登入後您可以：
-          </p>
-
-          <div className="space-y-3 mb-6">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
+          {mode === 'login' && (
+            <>
+              <p
+                style={{
+                  fontSize: DESIGN_TOKENS.fontSize.md,
+                  color: DESIGN_TOKENS.colors.text.secondary,
+                  marginBottom: '20px',
+                }}
               >
-                <BookOpen size={16} color={DESIGN_TOKENS.colors.feature} />
+                登入後您可以：
+              </p>
+
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
+                  >
+                    <BookOpen size={16} color={DESIGN_TOKENS.colors.feature} />
+                  </div>
+                  <span
+                    style={{
+                      fontSize: DESIGN_TOKENS.fontSize.sm,
+                      color: DESIGN_TOKENS.colors.text.secondary,
+                    }}
+                  >
+                    儲存跨設備歌單
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
+                  >
+                    <Star size={16} color={DESIGN_TOKENS.colors.feature} />
+                  </div>
+                  <span
+                    style={{
+                      fontSize: DESIGN_TOKENS.fontSize.sm,
+                      color: DESIGN_TOKENS.colors.text.secondary,
+                    }}
+                  >
+                    收藏最愛歌曲
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
+                  >
+                    <Settings size={16} color={DESIGN_TOKENS.colors.feature} />
+                  </div>
+                  <span
+                    style={{
+                      fontSize: DESIGN_TOKENS.fontSize.sm,
+                      color: DESIGN_TOKENS.colors.text.secondary,
+                    }}
+                  >
+                    同步個人設定
+                  </span>
+                </div>
               </div>
-              <span
+            </>
+          )}
+
+          {/* Email/Password Form */}
+          <form onSubmit={handleEmailAuth} className="space-y-4 mb-4">
+            {mode === 'signup' && (
+              <div>
+                <label
+                  style={{
+                    fontSize: DESIGN_TOKENS.fontSize.sm,
+                    color: DESIGN_TOKENS.colors.text.secondary,
+                    display: 'block',
+                    marginBottom: '8px',
+                  }}
+                >
+                  名稱（選填）
+                </label>
+                <div
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                  style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
+                >
+                  <User size={18} color={DESIGN_TOKENS.colors.text.tertiary} />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="您的名稱"
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      color: DESIGN_TOKENS.colors.text.primary,
+                      fontSize: DESIGN_TOKENS.fontSize.md,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label
                 style={{
                   fontSize: DESIGN_TOKENS.fontSize.sm,
                   color: DESIGN_TOKENS.colors.text.secondary,
+                  display: 'block',
+                  marginBottom: '8px',
                 }}
               >
-                儲存跨設備歌單
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
+                Email
+              </label>
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl"
                 style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
               >
-                <Star size={16} color={DESIGN_TOKENS.colors.feature} />
+                <Mail size={18} color={DESIGN_TOKENS.colors.text.tertiary} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  required
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: DESIGN_TOKENS.colors.text.primary,
+                    fontSize: DESIGN_TOKENS.fontSize.md,
+                  }}
+                />
               </div>
-              <span
+            </div>
+
+            <div>
+              <label
                 style={{
                   fontSize: DESIGN_TOKENS.fontSize.sm,
                   color: DESIGN_TOKENS.colors.text.secondary,
+                  display: 'block',
+                  marginBottom: '8px',
                 }}
               >
-                收藏最愛歌曲
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
+                密碼
+              </label>
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl"
                 style={{ backgroundColor: DESIGN_TOKENS.colors.input }}
               >
-                <Settings size={16} color={DESIGN_TOKENS.colors.feature} />
+                <Lock size={18} color={DESIGN_TOKENS.colors.text.tertiary} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: DESIGN_TOKENS.colors.text.primary,
+                    fontSize: DESIGN_TOKENS.fontSize.md,
+                  }}
+                />
               </div>
-              <span
+            </div>
+
+            {error && (
+              <p
                 style={{
                   fontSize: DESIGN_TOKENS.fontSize.sm,
-                  color: DESIGN_TOKENS.colors.text.secondary,
+                  color: '#ef4444',
                 }}
               >
-                同步個人設定
-              </span>
-            </div>
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || !email || !password || (mode === 'signup' && password.length < 6)}
+              className="w-full py-3 rounded-xl transition-all disabled:opacity-50"
+              style={{
+                backgroundColor: DESIGN_TOKENS.colors.feature,
+                color: '#000',
+                fontSize: DESIGN_TOKENS.fontSize.md,
+                fontWeight: DESIGN_TOKENS.fontWeight.medium,
+              }}
+            >
+              {loading ? '處理中...' : mode === 'login' ? '登入' : '註冊'}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-4">
+            <div style={{ flex: 1, height: '1px', backgroundColor: DESIGN_TOKENS.colors.panelBorder }} />
+            <span
+              style={{
+                fontSize: DESIGN_TOKENS.fontSize.sm,
+                color: DESIGN_TOKENS.colors.text.tertiary,
+              }}
+            >
+              或
+            </span>
+            <div style={{ flex: 1, height: '1px', backgroundColor: DESIGN_TOKENS.colors.panelBorder }} />
           </div>
 
           {/* Google Sign In Button */}
           <button
-            onClick={handleSignIn}
+            onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full py-3 rounded-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50"
+            className="w-full py-3 rounded-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 mb-4"
             style={{
               backgroundColor: DESIGN_TOKENS.colors.background,
-              border: '1px solid DESIGN_TOKENS.colors.panelBorder',
+              border: `1px solid ${DESIGN_TOKENS.colors.panelBorder}`,
             }}
           >
             <svg width="18" height="18" viewBox="0 0 18 18">
@@ -158,24 +338,48 @@ export function AuthModal({ isOpen, onClose, feature }: AuthModalProps) {
                 color: DESIGN_TOKENS.colors.text.primary,
               }}
             >
-              {loading ? '登入中...' : '使用 Google 繼續'}
+              使用 Google 繼續
             </span>
           </button>
+
+          {/* Toggle Mode */}
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={toggleMode}
+              className="text-sm"
+              style={{ color: DESIGN_TOKENS.colors.text.tertiary }}
+            >
+              {mode === 'login' ? (
+                <>
+                  還沒有帳號？{' '}
+                  <span style={{ color: DESIGN_TOKENS.colors.feature }}>立即註冊</span>
+                </>
+              ) : (
+                <>
+                  已經有帳號？{' '}
+                  <span style={{ color: DESIGN_TOKENS.colors.feature }}>前往登入</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Footer */}
-        <div
-          className="p-4"
-          style={{ borderTop: `1px solid ${DESIGN_TOKENS.colors.panelBorder}` }}
-        >
-          <button
-            onClick={onClose}
-            className="w-full py-3 rounded-xl"
-            style={{ color: DESIGN_TOKENS.colors.text.tertiary }}
+        {mode === 'login' && (
+          <div
+            className="p-4"
+            style={{ borderTop: `1px solid ${DESIGN_TOKENS.colors.panelBorder}` }}
           >
-            稍後再說
-          </button>
-        </div>
+            <button
+              onClick={onClose}
+              className="w-full py-3 rounded-xl"
+              style={{ color: DESIGN_TOKENS.colors.text.tertiary }}
+            >
+              稍後再說
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

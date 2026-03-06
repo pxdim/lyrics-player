@@ -14,7 +14,13 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
+  // Google 登入
   signIn: () => Promise<void>;
+  // Email 登入
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  // Email 註冊
+  signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
+  // 登出
   signOut: () => Promise<void>;
 }
 
@@ -79,6 +85,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithEmail = async (email: string, password: string) => {
+    setError(null);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message);
+        throw error;
+      }
+    } catch (err) {
+      const message = err instanceof AuthError ? err.message : '登入失敗';
+      setError(message);
+      throw err;
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string, name?: string) => {
+    setError(null);
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            display_name: name || email.split('@')[0],
+          },
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+        throw error;
+      }
+
+      // 如果需要 email 驗證
+      if (data.user && !data.session) {
+        setError('請檢查您的信箱以確認帳號');
+      }
+    } catch (err) {
+      const message = err instanceof AuthError ? err.message : '註冊失敗';
+      setError(message);
+      throw err;
+    }
+  };
+
   const signOut = async () => {
     setError(null);
 
@@ -101,6 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     signIn,
+    signInWithEmail,
+    signUpWithEmail,
     signOut,
   };
 
